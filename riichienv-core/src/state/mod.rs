@@ -481,7 +481,7 @@ impl GameState {
                                         ActionType::Ron,
                                         Some(tile),
                                         vec![],
-                                        None,
+                                        Some(i),
                                     ));
                                 }
                             }
@@ -609,7 +609,7 @@ impl GameState {
                                     ActionType::Ron,
                                     Some(tile),
                                     vec![],
-                                    None,
+                                    Some(i),
                                 ));
                             }
                         }
