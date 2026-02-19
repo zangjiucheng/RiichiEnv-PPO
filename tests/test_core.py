@@ -1,5 +1,7 @@
+import json
+
 import riichienv
-from riichienv import Conditions, HandEvaluator, MeldType
+from riichienv import Action, ActionType, Conditions, HandEvaluator, MeldType
 
 
 def test_hand_parsing():
@@ -186,10 +188,6 @@ def test_only_aka_dora_fails():
 
 
 def test_reach_action_to_mjai_includes_actor():
-    import json
-
-    from riichienv import Action, ActionType
-
     # actor ありの reach → to_mjai() に "actor" が含まれる
     action = Action(type=ActionType.Riichi, actor=2)
     result = json.loads(action.to_mjai())

@@ -154,12 +154,20 @@ impl KyokuStepIterator {
                     ..
                 } => {
                     let pid = *seat as u8;
-                    let env_action =
-                        EnvAction::new(crate::action::ActionType::Discard, Some(*tile), Vec::new(), None);
+                    let env_action = EnvAction::new(
+                        crate::action::ActionType::Discard,
+                        Some(*tile),
+                        Vec::new(),
+                        None,
+                    );
 
                     if *is_liqi {
-                        let riichi_action =
-                            EnvAction::new(crate::action::ActionType::Riichi, None, Vec::new(), None);
+                        let riichi_action = EnvAction::new(
+                            crate::action::ActionType::Riichi,
+                            None,
+                            Vec::new(),
+                            None,
+                        );
 
                         let obs = slf.state.get_observation_for_replay(
                             pid,

@@ -565,7 +565,10 @@ mod unit_tests {
 
         // Step 2: 打牌 5sr(88) — リーチ宣言後の捨て牌
         let mut actions2 = HashMap::new();
-        actions2.insert(pid, Action::new(ActionType::Discard, Some(88), vec![], None));
+        actions2.insert(
+            pid,
+            Action::new(ActionType::Discard, Some(88), vec![], None),
+        );
         state.step(&actions2);
 
         // 他家にクレームがある場合は WaitResponse → 全員パス
