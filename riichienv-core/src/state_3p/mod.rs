@@ -618,6 +618,7 @@ impl GameState3P {
                             round_wind: Wind::from(self.round_wind),
                             riichi_sticks: self.riichi_sticks,
                             honba: self.honba as u32,
+                            kita_count: self.players[pid as usize].kita_tiles.len() as u8,
                             is_sanma: true,
                             num_players: NP as u8,
                             ..Default::default()
@@ -848,6 +849,7 @@ impl GameState3P {
                         round_wind: Wind::from(self.round_wind),
                         riichi_sticks: self.riichi_sticks,
                         honba: self.honba as u32,
+                        kita_count: self.players[w_pid as usize].kita_tiles.len() as u8,
                         is_sanma: true,
                         num_players: NP as u8,
                         ..Default::default()

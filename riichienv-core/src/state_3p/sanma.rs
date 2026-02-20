@@ -74,6 +74,7 @@ impl GameState3P {
                 honba: self.honba as u32,
                 is_sanma: true,
                 num_players: np,
+                kita_count: self.players[i as usize].kita_tiles.len() as u8,
                 ..Default::default()
             };
 
