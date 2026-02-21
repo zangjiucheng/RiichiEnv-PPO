@@ -598,7 +598,7 @@ impl GameStateEventHandler for GameState {
                     self.riichi_sticks += 1;
                 }
                 // Compute tenpai/noten payments
-                let mut tenpai = vec![false; 4];
+                let mut tenpai = [false; 4];
                 for (i, p) in self.players.iter().enumerate() {
                     if i < 4 {
                         let calc = crate::hand_evaluator::HandEvaluator::new(

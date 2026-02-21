@@ -203,7 +203,7 @@ impl Observation3P {
         broadcast_scalar(buf, ch_offset, 54, round_progress / 7.0);
 
         // Dora Count (ch 55-57 for 3 players)
-        let mut dora_counts = vec![0u8; NP];
+        let mut dora_counts = [0u8; NP];
         for (player_idx, dora_count) in dora_counts.iter_mut().enumerate() {
             if player_idx < self.melds.len() {
                 for meld in &self.melds[player_idx] {

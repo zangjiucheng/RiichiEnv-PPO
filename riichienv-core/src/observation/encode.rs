@@ -146,8 +146,7 @@ impl Observation {
         if 27 + rw < 34 {
             set_val(buf, ch_offset, 35, 27 + rw, 1.0);
         }
-        let np = NP;
-        let seat = (self.player_id + np - self.oya) % np;
+        let seat = (self.player_id + NP - self.oya) % NP;
         if 27 + (seat as usize) < 34 {
             set_val(buf, ch_offset, 36, 27 + (seat as usize), 1.0);
         }
@@ -157,7 +156,7 @@ impl Observation {
         broadcast_scalar(buf, ch_offset, 38, (self.riichi_sticks as f32) / 5.0);
 
         // Scores (ch 39-46)
-        for i in 0..np as usize {
+        for i in 0..NP as usize {
             if i < self.scores.len() {
                 broadcast_scalar(
                     buf,
@@ -208,7 +207,7 @@ impl Observation {
         broadcast_scalar(buf, ch_offset, 54, round_progress / 7.0);
 
         // Dora Count (ch 55-58)
-        let mut dora_counts = vec![0u8; np as usize];
+        let mut dora_counts = [0u8; NP as usize];
         for (player_idx, dora_count) in dora_counts.iter_mut().enumerate() {
             if player_idx < self.melds.len() {
                 for meld in &self.melds[player_idx] {
@@ -295,7 +294,7 @@ impl Observation {
         }
 
         // Extended discards opponent 1 (ch 68-69)
-        let opp1_id = ((self.player_id + 1) % np) as usize;
+        let opp1_id = ((self.player_id + 1) % NP) as usize;
         if opp1_id < self.discards.len() {
             let discs = &self.discards[opp1_id];
             for (i, &t) in discs.iter().rev().skip(4).take(2).enumerate() {
@@ -307,7 +306,7 @@ impl Observation {
         }
 
         // Tsumogiri flags (ch 70-73)
-        for player_idx in 0..np as usize {
+        for player_idx in 0..NP as usize {
             if player_idx < self.tsumogiri_flags.len()
                 && !self.tsumogiri_flags[player_idx].is_empty()
             {

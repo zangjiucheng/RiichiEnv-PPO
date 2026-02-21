@@ -840,7 +840,7 @@ impl GameState3P {
                     vec![ron_claims[0]]
                 };
 
-                let mut total_deltas = vec![0i32; NP];
+                let mut total_deltas = [0i32; NP];
                 let mut oya_won = false;
                 let mut deposit_taken = false;
                 let mut honba_taken = false;
@@ -1589,7 +1589,7 @@ impl GameState3P {
     pub fn _trigger_ryukyoku(&mut self, reason: &str) {
         self._accept_riichi();
 
-        let mut tenpai = vec![false; NP];
+        let mut tenpai = [false; NP];
         let mut final_reason = reason.to_string();
         let mut nagashi_winners = Vec::new();
 
