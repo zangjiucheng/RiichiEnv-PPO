@@ -535,7 +535,7 @@ impl MjaiReplay {
                     hules: vec![hule_data],
                 });
             }
-            MjaiEvent::Kita { actor } => {
+            MjaiEvent::Kita { actor: _ } => {
                 // Kita is treated as a special action; no separate Action variant needed
                 // The event handler handles it via MjaiEvent directly
             }

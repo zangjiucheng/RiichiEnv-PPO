@@ -465,9 +465,7 @@ class TestSanmaScoring:
 
     def test_calculate_score_3p(self):
         """calculate_score with num_players=3 should work."""
-        score = calculate_score(
-            han=3, fu=30, is_oya=False, is_tsumo=False, honba=0, num_players=3
-        )
+        score = calculate_score(han=3, fu=30, is_oya=False, is_tsumo=False, honba=0, num_players=3)
         assert score is not None
 
 
@@ -486,9 +484,7 @@ class TestSanmaGameFlow:
             o = obs[pid]
             # Try tsumo first if available
             legals = o.legal_actions()
-            tsumo = next(
-                (a for a in legals if a.action_type == ActionType.Tsumo), None
-            )
+            tsumo = next((a for a in legals if a.action_type == ActionType.Tsumo), None)
             if tsumo:
                 obs = env.step({pid: tsumo})
             else:

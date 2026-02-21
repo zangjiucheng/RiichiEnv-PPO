@@ -117,6 +117,7 @@ impl GameRule {
 impl GameRule {
     #[new]
     #[pyo3(signature = (allows_ron_on_ankan_for_kokushi_musou=false, is_kokushi_musou_13machi_double=false, yakuman_pao_is_liability_only=false, allow_double_ron=true, kuikae_mode=KuikaeMode::StrictFlank, kan_dora_timing=KanDoraTimingMode::TenhouImmediate, is_sanma=false, allow_kita=false, sanma_tsumo_zon=false))]
+    #[allow(clippy::too_many_arguments)]
     pub fn py_new(
         allows_ron_on_ankan_for_kokushi_musou: bool,
         is_kokushi_musou_13machi_double: bool,

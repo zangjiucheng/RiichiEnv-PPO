@@ -293,7 +293,7 @@ impl Observation3P {
         }
 
         // Extended discards opponent 1 (ch 68-69)
-        let opp1_id = ((self.player_id as usize + 1) % NP) as usize;
+        let opp1_id = (self.player_id as usize + 1) % NP;
         if opp1_id < self.discards.len() {
             let discs = &self.discards[opp1_id];
             for (i, &t) in discs.iter().rev().skip(4).take(2).enumerate() {
