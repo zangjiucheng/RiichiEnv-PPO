@@ -1110,8 +1110,12 @@ impl GameState3P {
                     }
                 } else {
                     self._accept_riichi();
+                    self.turn_count += 1;
                     self.current_player = (self.current_player + 1) % NP as u8;
                     self._deal_next();
+                    if self.turn_count >= NP as u32 {
+                        self.is_first_turn = false;
+                    }
                 }
             }
         }
