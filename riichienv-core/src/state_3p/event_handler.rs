@@ -408,6 +408,9 @@ impl GameState3PEventHandler for GameState3P {
                 self.needs_tsumo = true;
                 self.is_first_turn = false;
                 self.is_after_kan = true;
+                // Record as last_discard so chankan ron (Hule) can identify
+                // the kan declarer as the payer (e.g. kokushi chankan on ankan).
+                self.last_discard = Some((*seat as u8, tiles[0]));
             }
             LogAction::Dora { dora_marker } => {
                 self.wall.dora_indicators.push(*dora_marker);

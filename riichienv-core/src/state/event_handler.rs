@@ -435,6 +435,10 @@ impl GameStateEventHandler for GameState {
                 self.needs_tsumo = true;
                 self.is_first_turn = false;
                 self.is_after_kan = true;
+                // Also record ankan for kokushi chankan (kokushi can ron on closed kan)
+                if *meld_type == MeldType::Ankan {
+                    self.last_discard = Some((*seat as u8, tiles[0]));
+                }
             }
             LogAction::Dora { dora_marker } => {
                 self.wall.dora_indicators.push(*dora_marker);
