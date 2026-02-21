@@ -9,12 +9,15 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyDictMethods, PyList, PyListMethods};
 use std::sync::Arc;
 
+#[cfg(feature = "python")]
 use crate::action::Action as EnvAction;
 #[cfg(feature = "python")]
 use crate::hand_evaluator::HandEvaluator;
 #[cfg(feature = "python")]
 use crate::types::WinResult;
-use crate::types::{Conditions, Meld, MeldType};
+#[cfg(feature = "python")]
+use crate::types::{Conditions, Meld};
+use crate::types::MeldType;
 
 pub mod mjai_replay;
 pub mod mjsoul_replay;

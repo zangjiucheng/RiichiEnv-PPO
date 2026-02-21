@@ -5,7 +5,6 @@ use crate::types::{Meld, MeldType};
 use super::helpers::{add_val, broadcast_scalar, get_next_tile, set_val};
 use super::Observation;
 
-/// Number of players (4P-only; 3P uses observation_3p).
 const NP: u8 = 4;
 
 /// Internal (non-PyO3) methods that write features directly into a flat f32 buffer.

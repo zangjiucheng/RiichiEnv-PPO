@@ -26,7 +26,7 @@ pub(crate) fn get_next_tile_sanma(tile: u32) -> u8 {
     let tile34 = tile / 4;
     match tile34 {
         0 => (8 * 4) as u8,  // 1m -> 9m
-        8 => (0 * 4) as u8,  // 9m -> 1m
+        8 => 0u8,            // 9m -> 1m (tile34=0, times 4 = 0)
         1..=7 => tile as u8, // shouldn't appear in sanma
         _ => get_next_tile(tile),
     }

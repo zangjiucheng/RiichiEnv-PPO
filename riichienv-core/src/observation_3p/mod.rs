@@ -1,4 +1,6 @@
+#[cfg(feature = "python")]
 mod encode;
+#[cfg(feature = "python")]
 pub(crate) mod helpers;
 #[cfg(feature = "python")]
 mod python;
