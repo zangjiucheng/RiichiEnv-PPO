@@ -577,8 +577,8 @@ impl GameStateEventHandler for GameState {
                         if let Some(pp) = pao_payer_ron {
                             let half = h.point_rong as i32 / 2;
                             let honba_pts = ron_honba as i32 * 300;
-                            self.players[discarder as usize].score -= half + honba_pts;
-                            self.players[pp as usize].score -= half;
+                            self.players[pp as usize].score -= half + honba_pts;
+                            self.players[discarder as usize].score -= half;
                             self.players[winner].score += h.point_rong as i32 + honba_pts;
                         } else {
                             let pay = h.point_rong as i32 + ron_honba as i32 * 300;

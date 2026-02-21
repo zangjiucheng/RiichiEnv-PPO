@@ -8,7 +8,10 @@ Verifies that the env accepts all replay actions and end scores match.
 
 import lzma
 import glob
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from typing import Optional, Tuple, List, Dict, Any
 
 import tqdm
@@ -25,6 +28,7 @@ from mjsoul_parser import MjsoulPaifuParser, Paifu
 
 TARGET_FILE_PATTERN = "/data/mjsoul/mahjong_game_record_4p_*/*.bin.xz"
 NP = 4
+NUM_WORKERS = os.cpu_count() or 4
 
 
 # ---------------------------------------------------------------------------
@@ -571,77 +575,119 @@ def validate_kyoku(
     return True, "ok"
 
 
+@dataclass
+class FileResult:
+    """Result of validating all kyokus in a single file."""
+    num_kyoku: int = 0
+    num_success: int = 0
+    num_fail: int = 0
+    num_skip: int = 0
+    failures: List[Tuple[str, str, bool]] = field(default_factory=list)  # (uuid, msg, is_last)
+
+
+# Per-process env (initialized lazily in each worker process)
+_process_env: Optional[RiichiEnv] = None
+
+
+def _get_env() -> RiichiEnv:
+    global _process_env
+    if _process_env is None:
+        _process_env = RiichiEnv("4p-red-half", rule=GameRule.default_mjsoul())
+    return _process_env
+
+
+def process_file(path: str) -> FileResult:
+    """Process a single file: validate all kyokus and return results."""
+    env = _get_env()
+    result = FileResult()
+
+    with lzma.open(path, "rb") as f:
+        data = f.read()
+        paifu: Paifu = MjsoulPaifuParser.to_dict(data)
+
+    game_uuid = paifu.header.get("uuid", "unknown")
+    game = MjSoulReplay.from_dict(paifu.data)
+
+    num_rounds = game.num_rounds()
+    for k, kyoku in enumerate(game.take_kyokus()):
+        result.num_kyoku += 1
+        is_last_kyoku = (k == num_rounds - 1)
+
+        success, msg = validate_kyoku(env, kyoku, game_uuid, k, is_last_kyoku=is_last_kyoku)
+
+        if msg.startswith("skip:"):
+            result.num_skip += 1
+        elif success:
+            result.num_success += 1
+        else:
+            result.num_fail += 1
+            result.failures.append((game_uuid, f"kyoku={k}: {msg}", is_last_kyoku))
+
+    return result
+
+
+def categorize_failure(msg: str, is_last: bool) -> str:
+    if "legals=[]" in msg or "legals=[], " in msg:
+        return "discard_empty_legals"
+    elif "not found in legal actions" in msg:
+        return "discard_tile_mismatch"
+    elif "Score mismatch" in msg:
+        if "last_event=tsumo" in msg:
+            return "score_mismatch:tsumo"
+        elif "last_event=ron" in msg:
+            return "score_mismatch:ron"
+        elif "last_event=discard" in msg:
+            return "score_mismatch:draw"
+        elif "last_event=liuju" in msg:
+            return "score_mismatch:liuju"
+        return "score_mismatch:other"
+    elif "No matching Ron" in msg:
+        return "no_ron"
+    elif "No matching Chi" in msg:
+        return "no_chi"
+    elif "No matching Tsumo" in msg:
+        return "no_tsumo"
+    elif "not in WaitResponse" in msg:
+        return "phase_error"
+    return "other"
+
+
 def main():
     target_files = sorted(glob.glob(TARGET_FILE_PATTERN, recursive=True))
     if not target_files:
         print(f"No files found matching {TARGET_FILE_PATTERN}")
         sys.exit(1)
 
-    target_files = list(target_files)[15000:17000]
+    target_files = list(target_files)[50000:75000]
 
     total_kyoku = 0
     total_success = 0
     total_fail = 0
     total_skip = 0
-    fail_details = []
+    fail_details: List[str] = []
     fail_categories: Dict[str, int] = {}
 
-    env = RiichiEnv("4p-red-half", rule=GameRule.default_mjsoul())
+    num_workers = min(NUM_WORKERS, len(target_files))
+    print(f"Using {num_workers} worker processes for {len(target_files)} files")
 
-    for path in tqdm.tqdm(target_files, desc="Processing files", ncols=100):
-        with lzma.open(path, "rb") as f:
-            data = f.read()
-            paifu: Paifu = MjsoulPaifuParser.to_dict(data)
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(process_file, path): path for path in target_files}
 
-        game_uuid = paifu.header.get("uuid", "unknown")
-        game = MjSoulReplay.from_dict(paifu.data)
+        for future in tqdm.tqdm(
+            as_completed(futures), total=len(futures),
+            desc="Processing files", ncols=100,
+        ):
+            result = future.result()
+            total_kyoku += result.num_kyoku
+            total_success += result.num_success
+            total_fail += result.num_fail
+            total_skip += result.num_skip
 
-        num_rounds = game.num_rounds()
-        for k, kyoku in enumerate(game.take_kyokus()):
-            total_kyoku += 1
-            is_last_kyoku = (k == num_rounds - 1)
-
-            success, msg = validate_kyoku(env, kyoku, game_uuid, k, is_last_kyoku=is_last_kyoku)
-
-            if msg.startswith("skip:"):
-                total_skip += 1
-            elif success:
-                total_success += 1
-            else:
-                total_fail += 1
-                # Categorize
-                if "legals=[]" in msg or "legals=[], " in msg:
-                    cat = "discard_empty_legals"
-                elif "not found in legal actions" in msg:
-                    cat = "discard_tile_mismatch"
-                elif "Score mismatch" in msg:
-                    # Sub-categorize by last event
-                    if "last_event=tsumo" in msg:
-                        cat = "score_mismatch:tsumo"
-                    elif "last_event=ron" in msg:
-                        cat = "score_mismatch:ron"
-                    elif "last_event=discard" in msg:
-                        cat = "score_mismatch:draw"
-                    elif "last_event=liuju" in msg:
-                        cat = "score_mismatch:liuju"
-                    else:
-                        cat = "score_mismatch:other"
-                elif "No matching Ron" in msg:
-                    cat = "no_ron"
-                elif "No matching Chi" in msg:
-                    cat = "no_chi"
-                elif "No matching Tsumo" in msg:
-                    cat = "no_tsumo"
-                elif "not in WaitResponse" in msg:
-                    cat = "phase_error"
-                else:
-                    cat = "other"
+            for game_uuid, msg, is_last in result.failures:
+                cat = categorize_failure(msg, is_last)
                 fail_categories[cat] = fail_categories.get(cat, 0) + 1
-
                 if len(fail_details) < 30:
-                    fail_details.append(
-                        f"  FAIL: {game_uuid} kyoku={k}: {msg}"
-                    )
+                    fail_details.append(f"  FAIL: {game_uuid} {msg}")
 
     print()
     print(f"Total kyoku: {total_kyoku}")

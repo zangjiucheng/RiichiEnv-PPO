@@ -940,7 +940,8 @@ impl GameState {
 
                             if pao_yakuman_val > 0 {
                                 let unit = if w_pid == self.oya { 48000 } else { 32000 };
-                                pao_amt = pao_yakuman_val * unit / 2;
+                                pao_amt = pao_yakuman_val * unit / 2
+                                    + ron_honba as usize * (np - 1) * 100;
                             }
                         }
 
