@@ -837,7 +837,11 @@ impl GameState3P {
                     let hand = &self.players[w_pid as usize].hand;
                     let melds = &self.players[w_pid as usize].melds;
                     let p_wind = (w_pid + NP as u8 - self.oya) % NP as u8;
-                    let is_chankan = self.pending_kan.is_some();
+                    // Chankan yaku applies to kakan/ankan, but NOT to kita (BaBei).
+                    // MjSoul allows ron on kita tiles but does not award chankan yaku.
+                    let is_chankan = self.pending_kan.as_ref().map_or(false, |(_, act)| {
+                        act.action_type != ActionType::Kita
+                    });
 
                     // Only the first winner (closest to discarder) gets honba
                     let ron_honba = if !honba_taken {
@@ -1111,6 +1115,10 @@ impl GameState3P {
     }
 
     fn _resolve_discard(&mut self, pid: u8, tile: u8, tsumogiri: bool) {
+        // A normal discard is never chankan, so clear any stale pending_kan
+        // to prevent false chankan detection on subsequent ron claims.
+        self.pending_kan = None;
+
         // After a discard the rinshan context is over. Clearing here ensures
         // that houtei (last-discard win) is correctly detected even when the
         // discard comes after a kan draw.

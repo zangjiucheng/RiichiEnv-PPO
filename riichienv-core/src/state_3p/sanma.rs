@@ -77,7 +77,7 @@ impl GameState3P {
                 riichi: self.players[i as usize].riichi_declared,
                 double_riichi: self.players[i as usize].double_riichi_declared,
                 ippatsu: self.players[i as usize].ippatsu_cycle,
-                chankan: true,
+                chankan: false, // Kita does not award chankan yaku
                 player_wind: Wind::from(p_wind),
                 round_wind: Wind::from(self.round_wind),
                 riichi_sticks: self.riichi_sticks,
