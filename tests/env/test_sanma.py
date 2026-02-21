@@ -1,5 +1,6 @@
 """Tests for 3-player (sanma) mahjong via RiichiEnv."""
 
+import math
 import struct
 
 import pytest
@@ -13,7 +14,7 @@ from riichienv import (
     calculate_score,
 )
 from riichienv._riichienv import Observation3P
-
+from riichienv.convert import tid_to_mjai
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -544,8 +545,6 @@ class TestSanmaMjaiAction:
     def test_select_action_from_mjai_discard(self):
         _, obs = _create_sanma_env()
         o = obs[0]
-        from riichienv.convert import tid_to_mjai
-
         tile = o.hand[0]
         mjai_str = tid_to_mjai(tile)
         action = o.select_action_from_mjai({"type": "dahai", "pai": mjai_str, "actor": 0})
@@ -585,7 +584,7 @@ class TestSanmaEncodeSanity:
         enc = obs[0].encode()
         floats = struct.unpack(f"<{len(enc) // 4}f", enc)
         for v in floats:
-            assert not (v != v), "NaN detected in encode output"  # NaN check
+            assert not math.isnan(v), "NaN detected in encode output"
             assert abs(v) < 1e10, f"Extreme value detected: {v}"
 
     def test_encode_extended_values_finite(self):
@@ -593,5 +592,5 @@ class TestSanmaEncodeSanity:
         enc = obs[0].encode_extended()
         floats = struct.unpack(f"<{len(enc) // 4}f", enc)
         for v in floats:
-            assert not (v != v), "NaN detected in encode_extended output"
+            assert not math.isnan(v), "NaN detected in encode_extended output"
             assert abs(v) < 1e10, f"Extreme value detected: {v}"

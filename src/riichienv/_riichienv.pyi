@@ -167,6 +167,21 @@ class HandEvaluator:
     @staticmethod
     def hand_from_text(text: str) -> HandEvaluator: ...
 
+class HandEvaluator3P:
+    def __init__(self, tiles: list[int], melds: list[Meld] = []): ...
+    def calc(
+        self,
+        win_tile: int,
+        dora_indicators: list[int] = [],
+        ura_indicators: list[int] = [],
+        conditions: Conditions | None = None,
+    ) -> WinResult: ...
+    def is_tenpai(self) -> bool: ...
+    def get_waits(self) -> list[int]: ...
+    def get_waits_u8(self) -> list[int]: ...
+    @staticmethod
+    def hand_from_text(text: str) -> HandEvaluator3P: ...
+
 class Observation:
     events: list[Any]
     hand: list[int]
@@ -318,6 +333,7 @@ __all__ = [
     "GameRule",
     "WinResult",
     "HandEvaluator",
+    "HandEvaluator3P",
     "WinResultContext",
     "WinResultContextIterator",
     "Conditions",
