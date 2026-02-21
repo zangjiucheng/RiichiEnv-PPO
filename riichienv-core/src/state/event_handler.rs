@@ -257,6 +257,8 @@ impl GameStateEventHandler for GameState {
                     .push(*is_liqi || *is_wliqi);
                 self.last_discard = Some((s as u8, t));
                 self.drawn_tile = None;
+                // Track nagashi eligibility: discard must be terminal/honor
+                self.players[s].nagashi_eligible &= crate::types::is_terminal_tile(t);
 
                 if *is_liqi || *is_wliqi {
                     if !self.players[s].riichi_declared {
@@ -308,6 +310,10 @@ impl GameStateEventHandler for GameState {
                 if let Some(rp) = self.riichi_pending_acceptance.take() {
                     self.players[rp as usize].score -= 1000;
                     self.riichi_sticks += 1;
+                }
+                // Discard was called -> discarder loses nagashi eligibility
+                if let Some((discarder_pid, _)) = self.last_discard {
+                    self.players[discarder_pid as usize].nagashi_eligible = false;
                 }
                 // Remove tiles from hand
                 for (i, t) in tiles.iter().enumerate() {
@@ -597,24 +603,64 @@ impl GameStateEventHandler for GameState {
                     self.players[rp as usize].score -= 1000;
                     self.riichi_sticks += 1;
                 }
-                // Compute tenpai/noten payments
-                let mut tenpai = [false; 4];
+
+                // Check for nagashi mangan first
+                let np = 4usize;
+                let mut nagashi_winners = Vec::new();
                 for (i, p) in self.players.iter().enumerate() {
-                    if i < 4 {
-                        let calc = crate::hand_evaluator::HandEvaluator::new(
-                            p.hand.clone(),
-                            p.melds.clone(),
-                        );
-                        tenpai[i] = calc.is_tenpai();
+                    if p.nagashi_eligible {
+                        nagashi_winners.push(i as u8);
                     }
                 }
-                let num_tp = tenpai.iter().filter(|&&t| t).count();
-                if num_tp > 0 && num_tp < 4 {
-                    let pk = 3000 / num_tp as i32;
-                    let pn = 3000 / (4 - num_tp) as i32;
-                    for (i, tp) in tenpai.iter().enumerate() {
-                        let delta = if *tp { pk } else { -pn };
-                        self.players[i].score += delta;
+
+                if !nagashi_winners.is_empty() {
+                    // Nagashi mangan: apply mangan tsumo payment (no honba)
+                    for &w in &nagashi_winners {
+                        let is_oya = w == self.oya;
+                        let score_res =
+                            crate::score::calculate_score(5, 30, is_oya, true, 0, np as u8);
+                        if is_oya {
+                            for i in 0..np {
+                                if i as u8 != w {
+                                    self.players[i].score -= score_res.pay_tsumo_ko as i32;
+                                    self.players[w as usize].score +=
+                                        score_res.pay_tsumo_ko as i32;
+                                }
+                            }
+                        } else {
+                            for i in 0..np {
+                                if i as u8 != w {
+                                    let pay = if i as u8 == self.oya {
+                                        score_res.pay_tsumo_oya as i32
+                                    } else {
+                                        score_res.pay_tsumo_ko as i32
+                                    };
+                                    self.players[i].score -= pay;
+                                    self.players[w as usize].score += pay;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Compute tenpai/noten payments
+                    let mut tenpai = [false; 4];
+                    for (i, p) in self.players.iter().enumerate() {
+                        if i < 4 {
+                            let calc = crate::hand_evaluator::HandEvaluator::new(
+                                p.hand.clone(),
+                                p.melds.clone(),
+                            );
+                            tenpai[i] = calc.is_tenpai();
+                        }
+                    }
+                    let num_tp = tenpai.iter().filter(|&&t| t).count();
+                    if num_tp > 0 && num_tp < 4 {
+                        let pk = 3000 / num_tp as i32;
+                        let pn = 3000 / (4 - num_tp) as i32;
+                        for (i, tp) in tenpai.iter().enumerate() {
+                            let delta = if *tp { pk } else { -pn };
+                            self.players[i].score += delta;
+                        }
                     }
                 }
                 self.is_done = true;
