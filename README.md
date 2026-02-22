@@ -217,6 +217,36 @@ True
 WinResult(is_win=True, yakuman=False, ron_agari=12000, tsumo_agari_oya=0, tsumo_agari_ko=0, yaku=[8, 11, 10, 22], han=5, fu=60)
 ```
 
+### Shanten Number Calculation
+
+Calculate the shanten number (minimum number of tiles away from tenpai) using lookup tables based on [Cryolite/nyanten](https://github.com/Cryolite/nyanten). Both 4-player and 3-player mahjong are supported.
+
+**4-player mahjong:**
+
+```python
+>>> from riichienv import parse_hand, calculate_shanten
+>>> tiles, _ = parse_hand("123m456p789s11z")
+>>> calculate_shanten(tiles)
+-1  # complete hand
+
+>>> tiles, _ = parse_hand("123m456p78s11z")
+>>> calculate_shanten(tiles)
+0  # tenpai
+```
+
+**3-player mahjong:**
+
+In 3-player mahjong (sanma), tiles 2m-8m do not exist. `calculate_shanten_3p` correctly handles this by disallowing sequences in the manzu suit.
+
+```python
+>>> from riichienv import parse_hand, calculate_shanten, calculate_shanten_3p
+>>> tiles, _ = parse_hand("123m456p789s11z")
+>>> calculate_shanten(tiles)
+-1  # 4P: complete (123m shuntsu is valid)
+>>> calculate_shanten_3p(tiles)
+1   # 3P: 1m/2m/3m cannot form a sequence
+```
+
 ## 🛠 Development
 
 For more architectural details and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPMENT_GUIDE.md](docs/DEVELOPMENT_GUIDE.md).
