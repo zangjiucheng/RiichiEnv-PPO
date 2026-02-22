@@ -56,9 +56,9 @@ def test_shanten_3p_chiitoitsu():
 def test_shanten_3p_consistency_with_4p():
     """For valid 3P hands (no 2m-8m), 3P and 4P shanten should match."""
     test_hands = [
-        ("19m19p19s1234567z", 0, 0), # Kokushi tenpai
-        ("1199m1199p1199s1z", 0, 0), # Chiitoitsu tenpai
-        ("111m999m111p11z", -1, -1), # Complete hand with 4 koutsu + pair
+        ("19m19p19s1234567z", 0, 0),  # Kokushi tenpai
+        ("1199m1199p1199s1z", 0, 0),  # Chiitoitsu tenpai
+        ("111m999m111p11z", -1, -1),  # Complete hand with 4 koutsu + pair
     ]
     for hand_str, expected_4p, expected_3p in test_hands:
         tiles, _ = riichienv.parse_hand(hand_str)
