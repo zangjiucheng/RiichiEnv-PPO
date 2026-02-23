@@ -417,7 +417,8 @@ class GameViewer:
         return cls(events, step=step, perspective=perspective, freeze=freeze)
 
     def _repr_html_(self) -> str:
-        return self.show().data
+        html = self.show().data
+        return html if isinstance(html, str) else ""
 
     def summary(self) -> list[dict[str, Any]]:
         rounds = []
