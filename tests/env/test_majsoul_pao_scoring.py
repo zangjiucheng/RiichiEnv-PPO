@@ -303,7 +303,7 @@ class TestPaoCompositeYakuman:
 
         assert env.score_deltas[0] == -48000  # Deal-in
         assert env.score_deltas[1] == 0
-        assert env.score_deltas[2] == 64000   # Winner
+        assert env.score_deltas[2] == 64000  # Winner
         assert env.score_deltas[3] == -16000  # PAO
 
     def test_mjsoul_4p_ron_pao_real_record_with_riichi(self) -> None:
