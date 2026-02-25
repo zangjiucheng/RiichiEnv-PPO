@@ -474,11 +474,16 @@ impl GameState3PEventHandler for GameState3P {
                 self.active_players = vec![self.current_player];
                 self.needs_tsumo = true;
                 self.is_first_turn = false;
+                self.is_after_kan = true; // Rinshan draw follows Kita, like after Kan
             }
             LogAction::Hule { hules } => {
                 // If a riichi deposit is pending and this is a ron, the deposit
                 // is voided (MjSoul does not deduct it when the discard is ronned).
-                let first_is_ron = hules.first().is_some_and(|h| !h.zimo);
+                // Also detect chankan-on-Kita: mjsoul marks it as zimo=true,
+                // but the winner is not the current player.
+                let first_is_ron = hules
+                    .first()
+                    .is_some_and(|h| !h.zimo || h.seat as u8 != self.current_player);
                 if first_is_ron {
                     self.riichi_pending_acceptance = None;
                 }
@@ -489,7 +494,8 @@ impl GameState3PEventHandler for GameState3P {
 
                 for h in hules {
                     let winner = h.seat;
-                    let is_tsumo = h.zimo;
+                    // Detect chankan-on-Kita: zimo=true but winner != current player
+                    let is_tsumo = h.zimo && h.seat as u8 == self.current_player;
 
                     if is_tsumo {
                         let is_oya = (winner as u8) == self.oya;

@@ -14,7 +14,6 @@ dependencies = [
     "tqdm>=4.67.1",
     "wandb>=0.24.0",
     "riichienv",
-    "mjsoul-parser",
     "ray[default]>=2.9.0",
     "torchrl>=0.3.0",
     "tensordict>=0.3.0",
@@ -29,5 +28,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.uv.sources]
-riichienv = { path = "../../", editable = true }
-mjsoul-parser = { path = "../../tools/mjsoul-parser", editable = true }
+riichienv = { workspace = true }

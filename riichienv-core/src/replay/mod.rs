@@ -102,6 +102,17 @@ pub struct KyokuStepIterator {
 }
 
 #[cfg(feature = "python")]
+#[pyclass(module = "riichienv._riichienv")]
+pub struct KyokuStepIterator3P {
+    state: crate::state_3p::GameState3P,
+    actions: Arc<[Action]>,
+    idx: usize,
+    pending_action: Option<(u8, EnvAction)>,
+    filter_seat: Option<u8>,
+    skip_single_action: bool,
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl KyokuStepIterator {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
@@ -289,7 +300,7 @@ impl KyokuStepIterator {
                             EnvAction::new(
                                 atype,
                                 Some(lowest),
-                                vec![lowest, lowest + 1, lowest + 2, lowest + 3],
+                                tiles.to_vec(),
                                 None,
                             )
                         }
@@ -340,12 +351,300 @@ impl KyokuStepIterator {
                     let first = &hules[0];
                     let pid = first.seat as u8;
 
-                    let atype = if first.zimo {
+                    // Detect chankan on Kita: mjsoul marks this as zimo=true,
+                    // but the winner is not the current player (they're ronning
+                    // the Kita declaration).
+                    let is_actual_tsumo = first.zimo && pid == slf.state.current_player;
+
+                    let atype = if is_actual_tsumo {
                         crate::action::ActionType::Tsumo
                     } else {
                         crate::action::ActionType::Ron
                     };
-                    let tile = if first.zimo {
+                    let tile = if is_actual_tsumo {
+                        slf.state.drawn_tile
+                    } else {
+                        slf.state.last_discard.map(|(_, t)| t)
+                    };
+                    let env_action = EnvAction::new(atype, tile, Vec::new(), None);
+
+                    let obs = slf.state.get_observation_for_replay(
+                        pid,
+                        &env_action,
+                        &format!("{:?}", action),
+                    )?;
+
+                    slf.state.apply_log_action(action);
+                    slf.idx += 1;
+
+                    if let Some(target) = slf.filter_seat {
+                        if pid == target {
+                            if slf.skip_single_action && obs._legal_actions.len() <= 1 {
+                                continue;
+                            }
+                            let py = slf.py();
+                            return Ok(Some((obs, env_action).into_pyobject(py)?.unbind().into()));
+                        }
+                    } else {
+                        let py = slf.py();
+                        return Ok(Some(
+                            (pid, obs, env_action).into_pyobject(py)?.unbind().into(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl KyokuStepIterator3P {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> PyResult<Option<Py<PyAny>>> {
+        let actions = slf.actions.clone();
+
+        loop {
+            if let Some((pid, action)) = slf.pending_action.take() {
+                let obs =
+                    slf.state
+                        .get_observation_for_replay(pid, &action, &format!("{:?}", action))?;
+
+                let current_log_action = &actions[slf.idx];
+                slf.state.apply_log_action(current_log_action);
+                slf.idx += 1;
+
+                if let Some(target) = slf.filter_seat {
+                    if pid == target {
+                        if slf.skip_single_action && obs._legal_actions.len() <= 1 {
+                            continue;
+                        }
+
+                        let py = slf.py();
+                        return Ok(Some((obs, action).into_pyobject(py)?.unbind().into()));
+                    }
+                    continue;
+                } else {
+                    let py = slf.py();
+                    return Ok(Some((pid, obs, action).into_pyobject(py)?.unbind().into()));
+                }
+            }
+
+            if slf.idx >= actions.len() {
+                return Ok(None);
+            }
+
+            let action = &actions[slf.idx];
+            match action {
+                Action::DealTile { .. }
+                | Action::Dora { .. }
+                | Action::BaBei { .. }
+                | Action::NoTile
+                | Action::LiuJu { .. } => {
+                    slf.state.apply_log_action(action);
+                    slf.idx += 1;
+                }
+                Action::Other(_) => {
+                    slf.idx += 1;
+                }
+                Action::DiscardTile {
+                    seat,
+                    tile,
+                    is_liqi,
+                    ..
+                } => {
+                    let pid = *seat as u8;
+                    let env_action = EnvAction::new(
+                        crate::action::ActionType::Discard,
+                        Some(*tile),
+                        Vec::new(),
+                        None,
+                    );
+
+                    if *is_liqi {
+                        let riichi_action = EnvAction::new(
+                            crate::action::ActionType::Riichi,
+                            None,
+                            Vec::new(),
+                            None,
+                        );
+
+                        let obs = slf.state.get_observation_for_replay(
+                            pid,
+                            &riichi_action,
+                            &format!("{:?}", action),
+                        )?;
+
+                        slf.pending_action = Some((pid, env_action));
+
+                        if let Some(target) = slf.filter_seat {
+                            if pid == target {
+                                let py = slf.py();
+                                return Ok(Some(
+                                    (obs, riichi_action).into_pyobject(py)?.unbind().into(),
+                                ));
+                            }
+                        } else {
+                            let py = slf.py();
+                            return Ok(Some(
+                                (pid, obs, riichi_action).into_pyobject(py)?.unbind().into(),
+                            ));
+                        }
+                    } else {
+                        let obs = slf.state.get_observation_for_replay(
+                            pid,
+                            &env_action,
+                            &format!("{:?}", action),
+                        )?;
+
+                        slf.state.apply_log_action(action);
+                        slf.idx += 1;
+
+                        if let Some(target) = slf.filter_seat {
+                            if pid == target {
+                                if slf.skip_single_action && obs._legal_actions.len() <= 1 {
+                                    continue;
+                                }
+
+                                let py = slf.py();
+                                return Ok(Some(
+                                    (obs, env_action).into_pyobject(py)?.unbind().into(),
+                                ));
+                            }
+                        } else {
+                            let py = slf.py();
+                            return Ok(Some(
+                                (pid, obs, env_action).into_pyobject(py)?.unbind().into(),
+                            ));
+                        }
+                    }
+                }
+                Action::ChiPengGang {
+                    seat,
+                    meld_type,
+                    tiles,
+                    ..
+                } => {
+                    let pid = *seat as u8;
+
+                    let env_action_type = match meld_type {
+                        MeldType::Chi => crate::action::ActionType::Chi,
+                        MeldType::Pon => crate::action::ActionType::Pon,
+                        MeldType::Daiminkan => crate::action::ActionType::Daiminkan,
+                        _ => crate::action::ActionType::Chi,
+                    };
+
+                    let t = tiles.first().copied();
+                    let env_action = EnvAction::new(env_action_type, t, tiles.to_vec(), None);
+
+                    let obs = slf.state.get_observation_for_replay(
+                        pid,
+                        &env_action,
+                        &format!("{:?}", action),
+                    )?;
+
+                    slf.state.apply_log_action(action);
+                    slf.idx += 1;
+
+                    if let Some(target) = slf.filter_seat {
+                        if pid == target {
+                            if slf.skip_single_action && obs._legal_actions.len() <= 1 {
+                                continue;
+                            }
+                            let py = slf.py();
+                            return Ok(Some((obs, env_action).into_pyobject(py)?.unbind().into()));
+                        }
+                    } else {
+                        let py = slf.py();
+                        return Ok(Some(
+                            (pid, obs, env_action).into_pyobject(py)?.unbind().into(),
+                        ));
+                    }
+                }
+                Action::AnGangAddGang {
+                    seat,
+                    meld_type,
+                    tiles,
+                    ..
+                } => {
+                    let pid = *seat as u8;
+                    let atype = match meld_type {
+                        MeldType::Ankan => crate::action::ActionType::Ankan,
+                        MeldType::Kakan => crate::action::ActionType::Kakan,
+                        _ => crate::action::ActionType::Ankan,
+                    };
+
+                    let env_action = match atype {
+                        crate::action::ActionType::Ankan => {
+                            let t34 = tiles[0] / 4;
+                            let lowest = t34 * 4;
+                            EnvAction::new(
+                                atype,
+                                Some(lowest),
+                                tiles.to_vec(),
+                                None,
+                            )
+                        }
+                        crate::action::ActionType::Kakan => {
+                            let t34 = tiles[0] / 4;
+                            let tile = tiles[0];
+                            let mut consume = Vec::new();
+                            for m in &slf.state.players[pid as usize].melds {
+                                if m.meld_type == MeldType::Pon && m.tiles[0] / 4 == t34 {
+                                    consume = m.tiles.clone();
+                                    break;
+                                }
+                            }
+                            EnvAction::new(atype, Some(tile), consume, None)
+                        }
+                        _ => {
+                            let tile = tiles.first().copied();
+                            EnvAction::new(atype, tile, tiles.to_vec(), None)
+                        }
+                    };
+
+                    let obs = slf.state.get_observation_for_replay(
+                        pid,
+                        &env_action,
+                        &format!("{:?}", action),
+                    )?;
+
+                    slf.state.apply_log_action(action);
+                    slf.idx += 1;
+
+                    if let Some(target) = slf.filter_seat {
+                        if pid == target {
+                            if slf.skip_single_action && obs._legal_actions.len() <= 1 {
+                                continue;
+                            }
+                            let py = slf.py();
+                            return Ok(Some((obs, env_action).into_pyobject(py)?.unbind().into()));
+                        }
+                    } else {
+                        let py = slf.py();
+                        return Ok(Some(
+                            (pid, obs, env_action).into_pyobject(py)?.unbind().into(),
+                        ));
+                    }
+                }
+                Action::Hule { hules } => {
+                    let first = &hules[0];
+                    let pid = first.seat as u8;
+
+                    // Detect chankan on Kita: mjsoul marks this as zimo=true,
+                    // but the winner is not the current player (they're ronning
+                    // the Kita declaration).
+                    let is_actual_tsumo = first.zimo && pid == slf.state.current_player;
+
+                    let atype = if is_actual_tsumo {
+                        crate::action::ActionType::Tsumo
+                    } else {
+                        crate::action::ActionType::Ron
+                    };
+                    let tile = if is_actual_tsumo {
                         slf.state.drawn_tile
                     } else {
                         slf.state.last_discard.map(|(_, t)| t)
@@ -472,26 +771,14 @@ impl LogKyoku {
     #[pyo3(signature = (seat=None, rule=None, skip_single_action=None))]
     fn steps(
         &self,
+        py: Python<'_>,
         seat: Option<u8>,
         rule: Option<crate::rule::GameRule>,
         skip_single_action: Option<bool>,
-    ) -> PyResult<KyokuStepIterator> {
+    ) -> PyResult<Py<PyAny>> {
         let rule = rule.unwrap_or(self.rule);
         let skip_single_action = skip_single_action.unwrap_or(true);
-        let mut state = crate::state::GameState::new(0, false, None, 0, rule);
-
-        // Initialize state from LogKyoku data
-        let initial_scores: [i32; 4] = self.scores.clone().try_into().unwrap_or([25000; 4]);
-        let doras = self.doras.clone();
-
-        let mut oya_idx = (self.ju % 4) as usize;
-        for (i, h) in self.hands.iter().enumerate() {
-            if h.len() == 14 {
-                oya_idx = i;
-                break;
-            }
-        }
-        let oya = oya_idx as u8;
+        let is_3p = self.scores.len() == 3;
 
         let bakaze = match self.chang {
             0 => crate::types::Wind::East,
@@ -508,84 +795,172 @@ impl LogKyoku {
             }
         }
 
-        state._initialize_round(
-            oya,
-            bakaze,
-            self.ben,
-            self.liqibang as u32,
-            wall.clone(),
-            Some(initial_scores.to_vec()),
-        );
+        let doras = self.doras.clone();
+        let np = if is_3p { 3usize } else { 4usize };
 
+        let mut oya_idx = (self.ju % np as u8) as usize;
         for (i, h) in self.hands.iter().enumerate() {
-            state.players[i].hand = h.clone();
+            if h.len() == 14 {
+                oya_idx = i;
+                break;
+            }
         }
+        let oya = oya_idx as u8;
 
-        // If dealer starts with 14 tiles, set drawn_tile to allow immediate Tsumo/Discard
-        if state.players[oya_idx].hand.len() == 14 {
-            let mut dt = state.players[oya_idx].hand.last().copied();
+        if is_3p {
+            let mut state = crate::state_3p::GameState3P::new(0, false, None, 0, rule);
+            let initial_scores: [i32; 3] = self.scores.clone().try_into().unwrap_or([35000; 3]);
 
-            // Peek at the first action to see which tile was actually "drawn" (or acted upon)
-            if let Some(first_action) = self.actions.first() {
-                match first_action {
-                    Action::Hule { hules } => {
-                        if let Some(h) = hules.iter().find(|h| h.seat == oya_idx && h.zimo) {
-                            dt = Some(h.hu_tile);
-                        }
-                    }
-                    Action::DiscardTile { seat, tile, .. } => {
-                        if *seat == oya_idx {
-                            dt = Some(*tile);
-                        }
-                    }
-                    Action::AnGangAddGang { seat, tiles, .. } => {
-                        if *seat == oya_idx {
-                            // For Ankan/Kakan, usually the first tile is the relevant one or part of the meld
-                            dt = tiles.first().copied();
-                        }
-                    }
-                    Action::ChiPengGang {
-                        seat,
-                        tiles,
-                        meld_type,
-                        ..
-                    } => {
-                        // Should not happen for Tsumo first turn, but if it does (e.g. late join?), handle it
-                        if *seat == oya_idx && *meld_type == MeldType::Ankan {
-                            dt = tiles.first().copied();
-                        }
-                    }
-                    _ => {}
+            state._initialize_round(
+                oya,
+                bakaze,
+                self.ben,
+                self.liqibang as u32,
+                wall,
+                Some(initial_scores.to_vec()),
+            );
+
+            for (i, h) in self.hands.iter().enumerate() {
+                if i < 3 {
+                    state.players[i].hand = h.clone();
                 }
             }
 
-            state.drawn_tile = dt;
-            state.needs_tsumo = false;
-        }
+            if state.players[oya_idx].hand.len() == 14 {
+                let mut dt = state.players[oya_idx].hand.last().copied();
+                if let Some(first_action) = self.actions.first() {
+                    match first_action {
+                        Action::Hule { hules } => {
+                            if let Some(h) = hules.iter().find(|h| h.seat == oya_idx && h.zimo) {
+                                dt = Some(h.hu_tile);
+                            }
+                        }
+                        Action::DiscardTile { seat, tile, .. } => {
+                            if *seat == oya_idx {
+                                dt = Some(*tile);
+                            }
+                        }
+                        Action::AnGangAddGang { seat, tiles, .. } => {
+                            if *seat == oya_idx {
+                                dt = tiles.first().copied();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                state.drawn_tile = dt;
+                state.needs_tsumo = false;
+            } else {
+                // 13-tile oya (MJAI from convert.py: separate tsumo event for 14th tile)
+                // _initialize_round already popped oya's 14th tile from wall;
+                // push it back since the log will provide it as a DealTile event.
+                if let Some(dt) = state.drawn_tile {
+                    state.wall.tiles.push(dt);
+                }
+                state.drawn_tile = None;
+                state.needs_tsumo = true;
+            }
 
-        for p in state.players.iter_mut() {
-            p.hand.sort();
-        }
-        state.wall.dora_indicators = doras;
+            for p in state.players.iter_mut() {
+                p.hand.sort();
+            }
+            state.wall.dora_indicators = doras;
 
-        // If wall was initialized from a full wall (136 tiles), pop all tiles starting hands consumed
-        if state.wall.tiles.len() == 136 {
-            let total_hand_tiles: usize = state.players.iter().map(|p| p.hand.len()).sum();
-            for _ in 0..total_hand_tiles {
-                if !state.wall.tiles.is_empty() {
-                    state.wall.tiles.pop();
+            let iter = KyokuStepIterator3P {
+                state,
+                actions: self.actions.clone(),
+                idx: 0,
+                pending_action: None,
+                filter_seat: seat,
+                skip_single_action,
+            };
+            Ok(Py::new(py, iter)?.into_any())
+        } else {
+            let mut state = crate::state::GameState::new(0, false, None, 0, rule);
+            let initial_scores: [i32; 4] = self.scores.clone().try_into().unwrap_or([25000; 4]);
+
+            state._initialize_round(
+                oya,
+                bakaze,
+                self.ben,
+                self.liqibang as u32,
+                wall,
+                Some(initial_scores.to_vec()),
+            );
+
+            for (i, h) in self.hands.iter().enumerate() {
+                state.players[i].hand = h.clone();
+            }
+
+            if state.players[oya_idx].hand.len() == 14 {
+                let mut dt = state.players[oya_idx].hand.last().copied();
+                if let Some(first_action) = self.actions.first() {
+                    match first_action {
+                        Action::Hule { hules } => {
+                            if let Some(h) = hules.iter().find(|h| h.seat == oya_idx && h.zimo) {
+                                dt = Some(h.hu_tile);
+                            }
+                        }
+                        Action::DiscardTile { seat, tile, .. } => {
+                            if *seat == oya_idx {
+                                dt = Some(*tile);
+                            }
+                        }
+                        Action::AnGangAddGang { seat, tiles, .. } => {
+                            if *seat == oya_idx {
+                                dt = tiles.first().copied();
+                            }
+                        }
+                        Action::ChiPengGang {
+                            seat,
+                            tiles,
+                            meld_type,
+                            ..
+                        } => {
+                            if *seat == oya_idx && *meld_type == MeldType::Ankan {
+                                dt = tiles.first().copied();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                state.drawn_tile = dt;
+                state.needs_tsumo = false;
+            } else {
+                // 13-tile oya (MJAI from convert.py: separate tsumo event for 14th tile)
+                // _initialize_round already popped oya's 14th tile from wall;
+                // push it back since the log will provide it as a DealTile event.
+                if let Some(dt) = state.drawn_tile {
+                    state.wall.tiles.push(dt);
+                }
+                state.drawn_tile = None;
+                state.needs_tsumo = true;
+            }
+
+            for p in state.players.iter_mut() {
+                p.hand.sort();
+            }
+            state.wall.dora_indicators = doras;
+
+            if state.wall.tiles.len() == 136 {
+                let total_hand_tiles: usize = state.players.iter().map(|p| p.hand.len()).sum();
+                for _ in 0..total_hand_tiles {
+                    if !state.wall.tiles.is_empty() {
+                        state.wall.tiles.pop();
+                    }
                 }
             }
-        }
 
-        Ok(KyokuStepIterator {
-            state,
-            actions: self.actions.clone(),
-            idx: 0,
-            pending_action: None,
-            filter_seat: seat,
-            skip_single_action,
-        })
+            let iter = KyokuStepIterator {
+                state,
+                actions: self.actions.clone(),
+                idx: 0,
+                pending_action: None,
+                filter_seat: seat,
+                skip_single_action,
+            };
+            Ok(Py::new(py, iter)?.into_any())
+        }
     }
 
     fn events(&self, py: Python) -> PyResult<Py<PyAny>> {
@@ -610,7 +985,7 @@ impl LogKyoku {
             nr_data.set_item("dora_marker", TileConverter::to_string(*first))?;
         }
 
-        for i in 0..4 {
+        for i in 0..self.hands.len() {
             let hand_list = PyList::new(
                 py,
                 self.hands[i].iter().map(|t| TileConverter::to_string(*t)),
@@ -841,7 +1216,7 @@ impl LogKyoku {
             // Sort descending by score. Then by seat index (lower seat index wins ties)
             indexed.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
-            let mut ranks = vec![0; 4];
+            let mut ranks = vec![0; scores.len()];
             for (rank, (seat, _)) in indexed.into_iter().enumerate() {
                 ranks[seat] = rank as i32;
             }

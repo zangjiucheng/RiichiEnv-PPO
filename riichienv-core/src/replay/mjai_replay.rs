@@ -168,6 +168,7 @@ struct KyokuBuilder {
     liqibang: u8,
     left_tile_count: u8,
     ura_doras: Vec<u8>,
+    rule: crate::rule::GameRule,
 
     // Internal tracking
     liqi_flags: Vec<bool>, // Who has declared reach (to set `is_liqi` on discard)
@@ -189,6 +190,7 @@ impl KyokuBuilder {
         scores: Vec<i32>,
         dora_marker: String,
         tehais: Vec<Vec<String>>,
+        rule: crate::rule::GameRule,
     ) -> Self {
         let chang = match bakaze.as_str() {
             "S" => 1,
@@ -198,15 +200,20 @@ impl KyokuBuilder {
         };
         let ju = kyoku - 1;
 
-        let mut hands = vec![Vec::new(); 4];
+        let np = scores.len();
+        let mut hands = vec![Vec::new(); np];
         for (i, tehai_strs) in tehais.iter().enumerate() {
-            if i < 4 {
+            if i < np {
                 hands[i] = tehai_strs.iter().map(|s| parse_mjai_tile(s)).collect();
             }
         }
 
         let first_dora = parse_mjai_tile(&dora_marker);
         let end_scores = scores.clone();
+
+        // Standard tile counts: 4p = 136, 3p = 108 (excludes 2m-8m)
+        // left_tile_count = total - dead_wall(14) - dealt(13*np)
+        let left_tile_count = if np == 3 { 55u8 } else { 70u8 };
 
         KyokuBuilder {
             actions: Vec::new(),
@@ -218,13 +225,14 @@ impl KyokuBuilder {
             ju,
             ben: honba,
             liqibang: kyoutaku,
-            left_tile_count: 70, // Standard starting count?
+            left_tile_count,
             ura_doras: Vec::new(),
-            liqi_flags: vec![false; 4],
-            wliqi_flags: vec![false; 4],
-            reach_accepted: vec![false; 4],
-            reached: vec![false; 4],
-            first_discard: vec![true; 4],
+            rule,
+            liqi_flags: vec![false; np],
+            wliqi_flags: vec![false; np],
+            reach_accepted: vec![false; np],
+            reached: vec![false; np],
+            first_discard: vec![true; np],
             has_calls: false,
             pending_hule: Vec::new(),
         }
@@ -253,7 +261,7 @@ impl KyokuBuilder {
             wliqi: self.wliqi_flags,
             paishan: None, // MJAI usually doesn't have full paishan
             actions: Arc::from(self.actions),
-            rule: crate::rule::GameRule::default_mortal(),
+            rule: self.rule,
             game_end_scores: None,
         }
     }
@@ -263,7 +271,24 @@ impl KyokuBuilder {
 #[pymethods]
 impl MjaiReplay {
     #[staticmethod]
-    pub fn from_jsonl(path: String) -> PyResult<Self> {
+    #[pyo3(signature = (path, rule=None))]
+    pub fn from_jsonl(path: String, rule: Option<String>) -> PyResult<Self> {
+        let game_rule = match rule.as_deref() {
+            Some("tenhou") => crate::rule::GameRule::default_tenhou(),
+            Some("mjsoul") => crate::rule::GameRule::default_mjsoul(),
+            Some("mortal") | None => crate::rule::GameRule::default_mortal(),
+            Some("tenhou_sanma") => crate::rule::GameRule::default_tenhou_sanma(),
+            Some("mjsoul_sanma") => crate::rule::GameRule::default_mjsoul_sanma(),
+            Some("mortal_sanma") => crate::rule::GameRule::default_mortal_sanma(),
+            Some(other) => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown rule: '{}'. Expected 'tenhou', 'mortal', 'mjsoul', \
+                     'tenhou_sanma', 'mortal_sanma', or 'mjsoul_sanma'",
+                    other
+                )))
+            }
+        };
+
         let file = File::open(&path)
             .map_err(|e| PyValueError::new_err(format!("Failed to open file: {}", e)))?;
         let mut buf_reader = BufReader::new(file);
@@ -317,6 +342,7 @@ impl MjaiReplay {
                         scores,
                         dora_marker,
                         tehais,
+                        game_rule,
                     ));
                 }
                 MjaiEvent::EndKyoku | MjaiEvent::EndGame => {
@@ -412,57 +438,63 @@ impl MjaiReplay {
             }
             MjaiEvent::Chi {
                 actor,
+                target,
                 pai,
                 consumed,
-                ..
             } => {
                 builder.has_calls = true;
                 let mut tiles = vec![parse_mjai_tile(&pai)];
-                for c in consumed {
-                    tiles.push(parse_mjai_tile(&c));
+                let mut froms = vec![target];
+                for c in &consumed {
+                    tiles.push(parse_mjai_tile(c));
+                    froms.push(actor);
                 }
                 builder.actions.push(Action::ChiPengGang {
                     seat: actor,
                     meld_type: MeldType::Chi,
                     tiles,
-                    froms: vec![],
+                    froms,
                 });
             }
             MjaiEvent::Pon {
                 actor,
+                target,
                 pai,
                 consumed,
-                ..
             } => {
                 builder.has_calls = true;
                 let mut tiles = vec![parse_mjai_tile(&pai)];
-                for c in consumed {
-                    tiles.push(parse_mjai_tile(&c));
+                let mut froms = vec![target];
+                for c in &consumed {
+                    tiles.push(parse_mjai_tile(c));
+                    froms.push(actor);
                 }
                 builder.actions.push(Action::ChiPengGang {
                     seat: actor,
                     meld_type: MeldType::Pon,
                     tiles,
-                    froms: vec![],
+                    froms,
                 });
             }
             MjaiEvent::Kan {
                 actor,
+                target,
                 pai,
                 consumed,
-                ..
             } => {
                 builder.has_calls = true;
                 // Daiminkan
                 let mut tiles = vec![parse_mjai_tile(&pai)];
-                for c in consumed {
-                    tiles.push(parse_mjai_tile(&c));
+                let mut froms = vec![target];
+                for c in &consumed {
+                    tiles.push(parse_mjai_tile(c));
+                    froms.push(actor);
                 }
                 builder.actions.push(Action::ChiPengGang {
                     seat: actor,
                     meld_type: MeldType::Daiminkan,
                     tiles,
-                    froms: vec![],
+                    froms,
                 });
             }
             MjaiEvent::Ankan { actor, consumed } => {
@@ -570,9 +602,11 @@ impl MjaiReplay {
                 // Buffer the hora for batching (double/triple ron)
                 builder.pending_hule.push(hule_data);
             }
-            MjaiEvent::Kita { actor: _ } => {
-                // Kita is treated as a special action; no separate Action variant needed
-                // The event handler handles it via MjaiEvent directly
+            MjaiEvent::Kita { actor } => {
+                builder.actions.push(Action::BaBei {
+                    seat: actor,
+                    moqie: false,
+                });
             }
             MjaiEvent::Ryukyoku { delta, scores, .. } => {
                 if let Some(s) = scores {
