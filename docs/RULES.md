@@ -5,30 +5,38 @@ Detailed game mechanics can be configured using the `GameRule` struct.
 > [!NOTE]
 > Configurable rule options are still under development and not yet exhaustive. If you find missing rules or have suggestions for additional configuration options, please report them via [GitHub Issues #43](https://github.com/smly/RiichiEnv/issues/43).
 
-## "Responsibility Payment" behavior for composite Yakumans
+## Pao (Responsibility Payment)
 
-- **Tenhou**: Pao player pays the full amount for Tsumo (including non-Pao Yakumans) and splits the full amount for Ron.
-- **Mahjong Soul**: Pao player is liable only for the Pao-triggering Yakuman part. The remaining Yakumans are treated as normal settlement (split among all for Tsumo, or paid by deal-in player for Ron).
+When a winning hand includes a Pao-triggering Yakuman (Daisangen or Daisuushii), the Pao player shares payment responsibility with the deal-in player (Ron) or bears it alone (Tsumo).
+
+For a **single Pao Yakuman** (e.g., Daisangen only), both platforms behave identically:
+
+- **Ron**: The total is split 50/50 between the Pao player and the deal-in player.
+- **Tsumo**: The Pao player pays the full amount. Other players pay nothing.
+
+The `yakuman_pao_is_liability_only` flag only matters for **composite hands where Pao and non-Pao Yakumans coexist** (e.g., Daisangen + Tsuuiisou). In this case:
+
+**Ron**: The flag controls the split between the Pao player and the deal-in player (both 4P and 3P):
+
+- **Tenhou** (`false`): The **total** Ron amount is split 50/50 between the Pao player and the deal-in player.
+- **Mahjong Soul** (`true`): Only the **Pao-triggering Yakuman portion** is split 50/50. The non-Pao Yakuman portion is paid entirely by the deal-in player.
+
+**Tsumo**: The flag controls how the non-Pao Yakuman portion is settled (both 4P and 3P):
+
+- **Tenhou** (`false`): Pao player pays the full Tsumo amount including non-Pao Yakumans. Other players pay nothing.
+- **Mahjong Soul** (`true`): Pao player pays only the Pao-triggering Yakuman portion. The remaining Yakumans are split normally among all non-winning players.
 
 | Flag | Description |
 |------|-------------|
-| `.yakuman_pao_is_liability_only` | Whether to limit Pao liability to the specific Pao-triggering Yakuman only (Mahjong Soul style). If false, Pao covers the full amount (Tenhou style). |
+| `.yakuman_pao_is_liability_only` | Whether to limit Pao liability to the Pao-triggering Yakuman portion only when combined with non-Pao Yakumans (Mahjong Soul style). Affects both Ron and Tsumo settlement in both 4P and 3P. If false, Pao covers the full amount (Tenhou style). Does not affect single-Yakuman wins (both styles are identical). |
 
-## Double Ron
+## Kuikae (Swap Calling) Restriction
+
+Controls whether players are forbidden from discarding a tile that completes the same group they just called (including flank tiles for Chi). Both Tenhou and Mahjong Soul enforce this restriction.
 
 | Flag | Description |
 |------|-------------|
-| `.allow_double_ron` | Whether to allow double ron (two players declaring Ron on the same discard). |
-
-## Kuikae (Swap Calling) Mode
-
-Controls whether players can discard a tile that completes the same sequence they just called.
-
-| Mode | Description |
-|------|-------------|
-| `KuikaeMode.None` | No kuikae restriction. |
-| `KuikaeMode.Basic` | Basic kuikae restriction (cannot discard the called tile). |
-| `KuikaeMode.StrictFlank` | Strict kuikae restriction including flank tiles (Tenhou/MJSoul standard). |
+| `.kuikae_forbidden` | When `True`, kuikae is forbidden: after Chi/Pon, the called tile and flank tiles cannot be discarded. When `False`, no kuikae restriction applies. |
 
 ## Kokushi Musou Rules
 
@@ -37,96 +45,138 @@ Controls whether players can discard a tile that completes the same sequence the
 | `.allows_ron_on_ankan_for_kokushi_musou` | Whether to allow Ron on a closed Kan (Ankan) for Kokushi Musou (Chankan). |
 | `.is_kokushi_musou_13machi_double` | Whether to treat Kokushi Musou 13-sided wait as a Double Yakuman. |
 
-## Kan Dora Reveal Timing
+## Double Yakuman Pattern Rules
 
-Controls when dora indicators are revealed after a Kan (quad) declaration.
+Controls whether specific Yakuman pattern variants are treated as Double Yakuman. Tenhou treats all pattern variants as single Yakuman, while Mahjong Soul treats them as Double Yakuman. Note that combinations of independent Yakuman (e.g., Tsuuiisou + Daisangen) always stack regardless of these flags.
 
-| Mode | Description |
+| Flag | Description |
 |------|-------------|
-| `KanDoraTimingMode.TenhouImmediate` | **Tenhou style**: Ankan reveals dora before rinshan tsumo (rinshan kaihou includes kan dora). Daiminkan/Kakan reveal dora before discard (Ron includes kan dora, but rinshan kaihou does not). |
-| `KanDoraTimingMode.MajsoulImmediate` | **Mahjong Soul style (段位戦ルール)**: Ankan reveals dora immediately after kan declaration (即めくり). Daiminkan/Kakan reveals dora after the discard, in chronological order of kan declarations. |
-| `KanDoraTimingMode.AfterDiscard` | Same as TenhouImmediate. Ankan before rinshan tsumo, Daiminkan/Kakan before discard. |
+| `.is_suuankou_tanki_double` | Whether to treat Suuankou Tanki (四暗刻単騎) as a Double Yakuman. |
+| `.is_junsei_chuurenpoutou_double` | Whether to treat Junsei Chuurenpoutou (純正九蓮宝燈) as a Double Yakuman. |
+| `.is_daisuushii_double` | Whether to treat Daisuushii (大四喜) as a Double Yakuman. |
 
-### Event Order Examples
+## Sanchaho (Triple Ron)
 
-**TenhouImmediate / AfterDiscard - Ankan (Closed Kan)**
+| Flag | Description |
+|------|-------------|
+| `.sanchaho_is_draw` | Whether triple ron (三家和, all non-discarders declaring Ron simultaneously) causes an abortive draw. When enabled (Tenhou), no scoring occurs and the round ends as a draw with renchan. When disabled (Mahjong Soul), all three Ron declarations are processed normally. |
+
+## Open Kan Dora Reveal Timing
+
+Controls when dora indicators are revealed after an open kan (Daiminkan/Kakan) declaration.
+
+Ankan (closed kan) always reveals dora immediately before the rinshan tsumo, regardless of this flag.
+
+| Flag | Description |
+|------|-------------|
+| `.open_kan_dora_after_discard` | Whether open kan (Daiminkan/Kakan) dora is revealed after the discard. When `True` (Tenhou / Mahjong Soul style), dora is revealed after the discard. When `False` (Mortal mjai protocol style), dora is revealed before the discard. |
+
+### Event Order
+
+When `open_kan_dora_after_discard = True` (Tenhou / Mahjong Soul):
+
+**Ankan (Closed Kan)**:
 ```
 ankan → dora → tsumo (rinshan) → dahai
 ```
-Note: Rinshan kaihou (winning on rinshan draw) includes the kan dora.
 
-**TenhouImmediate / AfterDiscard - Kakan/Daiminkan (Open/Added Kan)**
+**Kakan/Daiminkan (Open/Added Kan)**:
 ```
 kakan → tsumo (rinshan) → dahai → dora
 daiminkan → tsumo (rinshan) → dahai → dora
 ```
-Note: Ron on the discard includes the kan dora. Rinshan kaihou does not include the kan dora.
 
-**MajsoulImmediate - Ankan (Closed Kan)**
+When `open_kan_dora_after_discard = False` (Mortal):
+
+**Ankan (Closed Kan)** - same as above:
 ```
 ankan → dora → tsumo (rinshan) → dahai
 ```
 
-**MajsoulImmediate - Kakan/Daiminkan (Open/Added Kan)**
+**Kakan/Daiminkan (Open/Added Kan)**:
 ```
-kakan → tsumo (rinshan) → dahai → dora
-daiminkan → tsumo (rinshan) → dahai → dora
+kakan → tsumo (rinshan) → dora → dahai
+daiminkan → tsumo (rinshan) → dora → dahai
 ```
+
+Note: Rinshan kaihou (winning on rinshan draw) always includes the kan dora.
 
 ### Usage
 
 ```python
-from riichienv import RiichiEnv, GameRule, KanDoraTimingMode
+from riichienv import RiichiEnv, GameRule
 
-# Tenhou timing (default for default_tenhou())
-rule = GameRule(kan_dora_timing=KanDoraTimingMode.TenhouImmediate)
+# Mortal style: open kan dora before discard (default for default_mortal())
+rule = GameRule(open_kan_dora_after_discard=False)
 env = RiichiEnv(rule=rule)
 
-# Mahjong Soul timing (default for default_mjsoul())
-rule = GameRule(kan_dora_timing=KanDoraTimingMode.MajsoulImmediate)
-env = RiichiEnv(rule=rule)
-
-# All kans reveal after discard
-rule = GameRule(kan_dora_timing=KanDoraTimingMode.AfterDiscard)
+# Tenhou / Mahjong Soul style: open kan dora after discard
+rule = GameRule(open_kan_dora_after_discard=True)
 env = RiichiEnv(rule=rule)
 ```
 
-## Three-Player (Sanma) Rules
+## Mortal Preset and Kan Dora Timing
 
-| Flag | Description |
-|------|-------------|
-| `.is_sanma` | Whether the game is a 3-player (sanma) game. |
-| `.allow_kita` | Whether Kita (BaBei / 北抜き) declarations are allowed. |
-| `.sanma_tsumo_zon` | Whether tsumo-zon (ツモ損) scoring is used. When enabled, the non-dealing winner pays the tsumo amount without the absent player's share being distributed. |
+The `default_mortal()` preset is designed for compatibility with Mortal's mjai protocol implementation. It uses the same rule flags as `default_tenhou()` except for `open_kan_dora_after_discard`.
+
+In Tenhou's actual game rules, open kan (Kakan/Daiminkan) dora is revealed **after** the player's discard. However, Mortal's mjai protocol implementation (`libriichi/src/arena/board.rs`) encodes the dora event **before** the dahai event for open kans:
+
+```rust
+// Mortal board.rs — Kakan/Daiminkan handler
+Event::Daiminkan { actor, .. } | Event::Kakan { actor, .. } => {
+    // ...
+    self.need_new_dora_at_discard = Some(());
+    // ...
+}
+
+// Mortal board.rs — Dahai handler
+Event::Dahai { actor, pai, .. } => {
+    if self.need_new_dora_at_discard.take().is_some() {
+        self.add_new_dora()?;   // dora event emitted BEFORE dahai
+    }
+    self.broadcast(&ev.event);  // then dahai
+    self.add_log(ev.clone());
+}
+```
+
+This produces the mjai event sequence `kakan → tsumo → dora → dahai`, where the dora event appears before the dahai in the protocol log. For ankan, Mortal reveals dora immediately after the kan declaration (before rinshan tsumo), which is the same as Tenhou:
+
+```rust
+// Mortal board.rs — Ankan handler
+Event::Ankan { actor, .. } => {
+    // ...
+    self.add_new_dora()?;  // "Immediately add new dora"
+    // ...
+}
+```
+
+The `default_mortal()` preset (`open_kan_dora_after_discard = false`) matches this protocol behavior, enabling compatibility with Mortal for agent evaluation and validation.
 
 ## Platform-Specific Rule Presets
 
-Differences in standard ranked match rules across major platforms.
+Differences in standard ranked match rules across major platforms and Mortal.
 
 ### 4-Player Presets
 
-| Flag | `default_tenhou()` | `default_mjsoul()` |
-|------|--------|--------------|
-| `.allows_ron_on_ankan_for_kokushi_musou` | `False` | `True` |
-| `.is_kokushi_musou_13machi_double` | `False` | `True` |
-| `.yakuman_pao_is_liability_only` | `False` | `True` |
-| `.allow_double_ron` | `True` | `True` |
-| `.kuikae_mode` | `StrictFlank` | `StrictFlank` |
-| `.kan_dora_timing` | `TenhouImmediate` | `MajsoulImmediate` |
-| `.is_sanma` | `False` | `False` |
-| `.allow_kita` | `False` | `False` |
-| `.sanma_tsumo_zon` | `False` | `False` |
+| Flag | `default_tenhou()` | `default_mjsoul()` | `default_mortal()` |
+|------|--------|--------------|--------------|
+| `.allows_ron_on_ankan_for_kokushi_musou` | `False` | `True` | `False` |
+| `.is_kokushi_musou_13machi_double` | `False` | `True` | `False` |
+| `.is_suuankou_tanki_double` | `False` | `True` | `False` |
+| `.is_junsei_chuurenpoutou_double` | `False` | `True` | `False` |
+| `.is_daisuushii_double` | `False` | `True` | `False` |
+| `.yakuman_pao_is_liability_only` | `False` | `True` | `False` |
+| `.sanchaho_is_draw` | `True` | `False` | `True` |
+| `.open_kan_dora_after_discard` | `True` | `True` | `False` |
 
 ### 3-Player (Sanma) Presets
 
-| Flag | `default_tenhou_sanma()` | `default_mjsoul_sanma()` |
-|------|--------|--------------|
-| `.allows_ron_on_ankan_for_kokushi_musou` | `False` | `True` |
-| `.is_kokushi_musou_13machi_double` | `False` | `True` |
-| `.yakuman_pao_is_liability_only` | `False` | `True` |
-| `.allow_double_ron` | `True` | `True` |
-| `.kuikae_mode` | `StrictFlank` | `StrictFlank` |
-| `.kan_dora_timing` | `TenhouImmediate` | `MajsoulImmediate` |
-| `.is_sanma` | `True` | `True` |
-| `.allow_kita` | `True` | `True` |
-| `.sanma_tsumo_zon` | `True` | `True` |
+| Flag | `default_tenhou_sanma()` | `default_mjsoul_sanma()` | `default_mortal_sanma()` |
+|------|--------|--------------|--------------|
+| `.allows_ron_on_ankan_for_kokushi_musou` | `False` | `True` | `False` |
+| `.is_kokushi_musou_13machi_double` | `False` | `True` | `False` |
+| `.is_suuankou_tanki_double` | `False` | `True` | `False` |
+| `.is_junsei_chuurenpoutou_double` | `False` | `True` | `False` |
+| `.is_daisuushii_double` | `False` | `True` | `False` |
+| `.yakuman_pao_is_liability_only` | `False` | `True` | `False` |
+| `.open_kan_dora_after_discard` | `True` | `True` | `False` |

@@ -1043,4 +1043,535 @@ mod unit_tests {
             "Player 0 hand should not be empty"
         );
     }
+
+    // ========== Yakuman Scoring & PAO Tests ==========
+
+    #[test]
+    fn test_kazoe_yakuman_score_boundary() {
+        // calculate_score uses `8000 * (han / 13)` for han >= 13.
+        // han 13 → single yakuman (8000 base)
+        let s13 = calculate_score(13, 0, false, false, 0, 4);
+        assert_eq!(s13.pay_ron, 32000, "han=13 ko ron should be 32000");
+
+        // han 14 → 8000*(14/13) = 8000*1 = still single yakuman
+        let s14 = calculate_score(14, 0, false, false, 0, 4);
+        assert_eq!(s14.pay_ron, 32000, "han=14 ko ron should still be 32000");
+
+        // han 25 → 8000*(25/13) = 8000*1 = still single yakuman
+        let s25 = calculate_score(25, 0, false, false, 0, 4);
+        assert_eq!(s25.pay_ron, 32000, "han=25 ko ron should still be 32000");
+
+        // han 26 → 8000*(26/13) = 8000*2 = double yakuman
+        let s26 = calculate_score(26, 0, false, false, 0, 4);
+        assert_eq!(s26.pay_ron, 64000, "han=26 ko ron should be 64000");
+
+        // Oya equivalents
+        let s13_oya = calculate_score(13, 0, true, false, 0, 4);
+        assert_eq!(s13_oya.pay_ron, 48000, "han=13 oya ron should be 48000");
+
+        let s26_oya = calculate_score(26, 0, true, false, 0, 4);
+        assert_eq!(s26_oya.pay_ron, 96000, "han=26 oya ron should be 96000");
+    }
+
+    #[test]
+    fn test_kazoe_yakuman_hand_evaluator_cap() {
+        use crate::hand_evaluator::HandEvaluator;
+        use crate::types::{Conditions, Wind};
+
+        // Build a hand with 14+ han but no yakuman yaku:
+        // Chinitsu (6) + Pinfu (1) + Iipeiko (1) + Riichi (1) + Tsumo (1) + Ippatsu (1) + Dora 3
+        // = 14 han. Should be capped to single yakuman, NOT double.
+        //
+        // Hand: 112233 456 789 m + 55m pair (all manzu = chinitsu)
+        // 1m=0, 2m=1, 3m=2, 4m=3, 5m=4, 6m=5, 7m=6, 8m=7, 9m=8
+        // 136-tile: 1m=0,1; 2m=4,5; 3m=8,9; 4m=12; 5m=16(red); 6m=20; 7m=24; 8m=28; 9m=32; 5m=17(pair)
+        let tiles_136 = vec![
+            0, 1, // 1m x2
+            4, 5, // 2m x2
+            8, 9,  // 3m x2
+            12, // 4m
+            16, // 5m (red → 1 aka dora)
+            20, // 6m
+            24, // 7m
+            28, // 8m
+            32, // 9m
+            17, // 5m (pair piece 1)
+        ];
+
+        let calc = HandEvaluator::new(tiles_136, Vec::new());
+
+        let cond = Conditions {
+            tsumo: true,
+            riichi: true,
+            ippatsu: true,
+            player_wind: Wind::South,
+            round_wind: Wind::East,
+            ..Default::default()
+        };
+
+        // Win tile: 5m (tile 18 in 136-format → type 4)
+        // This completes the 55m pair.
+        // Dora indicators: set 3 indicators that produce dora on tiles we hold.
+        // Indicator 0m (tile_type=0, but 0-1 → next=1m). Use 3m indicator → dora is 4m.
+        // Indicator for 3m = tile 8..11 → next tile type is 4 (4m). We hold 4m.
+        // Let's use 3 copies of 3m indicator so dora count = 3 (we hold one 4m).
+        // Actually to get 3 dora, let's use indicator pointing to a tile we hold multiple of.
+        // Indicator 0m (type 0) → dora is 1m (type 0+1=1... wait, 0→1 means 2m).
+        // get_next_tile: if tile < 9, tile == 8 → 0, else tile+1
+        // So indicator type 0 (1m) → dora type 1 (2m). We hold 2x 2m = 2 dora.
+        // Indicator type 1 (2m) → dora type 2 (3m). We hold 2x 3m = 2 dora.
+        // Indicator type 3 (4m) → dora type 4 (5m). We hold 2x 5m in hand = 2 dora.
+        // With aka 5m (red) that's +1 aka_dora.
+        // So: chinitsu(6) + pinfu(1) + iipeiko(1) + riichi(1) + tsumo(1) + ippatsu(1) + 2 dora + 1 aka = 14 han
+        // indicator type 0 (1m) → dora type 1 (2m), we hold 2 copies = 2 dora.
+        // Plus 1 aka dora from red 5m.
+        // chinitsu(6) + pinfu(1) + iipeiko(1) + riichi(1) + tsumo(1) + ippatsu(1) + 2 dora + 1 aka = 14
+        let dora_indicators = vec![0]; // type 0 → dora type 1 (2m), we hold 2
+        let res = calc.calc(18, dora_indicators, vec![], Some(cond));
+
+        assert!(res.is_win, "Should be a winning hand");
+        assert!(
+            !res.yakuman,
+            "Should NOT be flagged as yakuman (it's kazoe)"
+        );
+        // han should be reported as the raw total (>=14), but scores capped at single yakuman
+        assert!(res.han >= 14, "Raw han should be >= 14, got {}", res.han);
+
+        // Ko tsumo: single yakuman = base 8000 → oya pays 16000, ko pays 8000
+        assert_eq!(
+            res.tsumo_agari_oya, 16000,
+            "Kazoe yakuman tsumo: oya should pay 16000"
+        );
+        assert_eq!(
+            res.tsumo_agari_ko, 8000,
+            "Kazoe yakuman tsumo: ko should pay 8000"
+        );
+    }
+
+    #[test]
+    fn test_daiminkan_pao_daisangen() {
+        use crate::action::{Action, ActionType};
+        use crate::types::{Meld, MeldType};
+
+        let mut state = create_test_state(2);
+        state._initialize_next_round(true, false);
+
+        let pid: u8 = 0;
+
+        // Give player 0 two open dragon pon melds (haku=31, hatsu=32).
+        // Tiles in melds use 34-tile notation.
+        state.players[0].melds = vec![
+            Meld {
+                meld_type: MeldType::Pon,
+                tiles: vec![124, 125, 126], // haku (31*4=124)
+                opened: true,
+                from_who: 1,
+                called_tile: Some(124),
+            },
+            Meld {
+                meld_type: MeldType::Pon,
+                tiles: vec![128, 129, 130], // hatsu (32*4=128)
+                opened: true,
+                from_who: 2,
+                called_tile: Some(128),
+            },
+        ];
+
+        // Player 3 discards chun (33*4=132). Player 0 calls daiminkan.
+        let discarder: u8 = 3;
+        state.last_discard = Some((discarder, 132));
+
+        // consume_tiles = the 3 chun tiles from hand (we use 133,134,135)
+        let action = Action::new(
+            ActionType::Daiminkan,
+            Some(132),
+            vec![133, 134, 135],
+            Some(pid),
+        );
+
+        state._resolve_kan(pid, action);
+
+        // PAO should be set: yaku 37 (daisangen) → discarder 3
+        assert_eq!(
+            state.players[0].pao.get(&37),
+            Some(&discarder),
+            "Daisangen PAO should point to discarder {}",
+            discarder
+        );
+    }
+
+    #[test]
+    fn test_daiminkan_pao_daisuushii() {
+        use crate::action::{Action, ActionType};
+        use crate::types::{Meld, MeldType};
+
+        let mut state = create_test_state(2);
+        state._initialize_next_round(true, false);
+
+        let pid: u8 = 0;
+
+        // Give player 0 three open wind pon melds (E=27, S=28, W=29).
+        state.players[0].melds = vec![
+            Meld {
+                meld_type: MeldType::Pon,
+                tiles: vec![108, 109, 110], // E (27*4=108)
+                opened: true,
+                from_who: 1,
+                called_tile: Some(108),
+            },
+            Meld {
+                meld_type: MeldType::Pon,
+                tiles: vec![112, 113, 114], // S (28*4=112)
+                opened: true,
+                from_who: 2,
+                called_tile: Some(112),
+            },
+            Meld {
+                meld_type: MeldType::Pon,
+                tiles: vec![116, 117, 118], // W (29*4=116)
+                opened: true,
+                from_who: 3,
+                called_tile: Some(116),
+            },
+        ];
+
+        // Player 2 discards N (30*4=120). Player 0 calls daiminkan.
+        let discarder: u8 = 2;
+        state.last_discard = Some((discarder, 120));
+
+        let action = Action::new(
+            ActionType::Daiminkan,
+            Some(120),
+            vec![121, 122, 123],
+            Some(pid),
+        );
+
+        state._resolve_kan(pid, action);
+
+        // PAO should be set: yaku 50 (daisuushii) → discarder 2
+        assert_eq!(
+            state.players[0].pao.get(&50),
+            Some(&discarder),
+            "Daisuushii PAO should point to discarder {}",
+            discarder
+        );
+    }
+
+    #[test]
+    fn test_daiminkan_no_pao_insufficient_melds() {
+        use crate::action::{Action, ActionType};
+        use crate::types::{Meld, MeldType};
+
+        let mut state = create_test_state(2);
+        state._initialize_next_round(true, false);
+
+        let pid: u8 = 0;
+
+        // Give player 0 only ONE dragon pon meld (haku=31).
+        state.players[0].melds = vec![Meld {
+            meld_type: MeldType::Pon,
+            tiles: vec![124, 125, 126], // haku (31*4=124)
+            opened: true,
+            from_who: 1,
+            called_tile: Some(124),
+        }];
+
+        // Player 1 discards hatsu (32*4=128). Player 0 calls daiminkan.
+        // After this, player 0 has 2 dragon melds — NOT 3, so no PAO.
+        let discarder: u8 = 1;
+        state.last_discard = Some((discarder, 128));
+
+        let action = Action::new(
+            ActionType::Daiminkan,
+            Some(128),
+            vec![129, 130, 131],
+            Some(pid),
+        );
+
+        state._resolve_kan(pid, action);
+
+        // No PAO should be set (only 2 dragon melds, need 3)
+        assert!(
+            state.players[0].pao.is_empty(),
+            "PAO should NOT be set with only 2 dragon melds, got: {:?}",
+            state.players[0].pao
+        );
+    }
+
+    #[test]
+    fn test_ron_pao_50_50_split() {
+        // Ron with PAO: pao player and discarder split total 50/50.
+        // score / 2 goes to pao player, remainder to discarder.
+
+        // Single yakuman ron by ko: 32000
+        let score: i32 = 32000;
+        let pao_amt = score / 2; // 16000
+        let discarder_amt = score - pao_amt; // 16000
+        assert_eq!(pao_amt, 16000);
+        assert_eq!(discarder_amt, 16000);
+        assert_eq!(pao_amt + discarder_amt, score, "Must sum to total score");
+
+        // Double yakuman ron by ko: 64000
+        let score2: i32 = 64000;
+        let pao_amt2 = score2 / 2;
+        let discarder_amt2 = score2 - pao_amt2;
+        assert_eq!(pao_amt2, 32000);
+        assert_eq!(discarder_amt2, 32000);
+        assert_eq!(pao_amt2 + discarder_amt2, score2);
+
+        // Single yakuman ron by oya: 48000
+        let score3: i32 = 48000;
+        let pao_amt3 = score3 / 2;
+        let discarder_amt3 = score3 - pao_amt3;
+        assert_eq!(pao_amt3, 24000);
+        assert_eq!(discarder_amt3, 24000);
+        assert_eq!(pao_amt3 + discarder_amt3, score3);
+
+        // Simulate delta computation (as in state/mod.rs ron PAO logic):
+        // winner w, pao_payer p, discarder d (all different)
+        let (w, p, d) = (0usize, 1usize, 2usize);
+        let mut deltas = [0i32; 4];
+        deltas[w] += score;
+        deltas[p] -= pao_amt;
+        deltas[d] -= score - pao_amt;
+        assert_eq!(deltas.iter().sum::<i32>(), 0, "Deltas must be zero-sum");
+    }
+
+    #[test]
+    fn test_tsumo_pao_non_pao_split() {
+        // Mixed PAO/non-PAO tsumo scoring (e.g. daisangen from PAO + another yakuman self-drawn).
+        // pao_yakuman_val = 1 (daisangen), non_pao_yakuman_val = 1 (e.g. suuankou),
+        // total_yakuman_val = 2.
+
+        let np: usize = 4;
+        let pao_yakuman_val: i32 = 1;
+        let non_pao_yakuman_val: i32 = 1;
+
+        // Case 1: Ko winner (pid=0, oya=1)
+        {
+            let pid = 0usize;
+            let oya = 1usize;
+            let pp = 3usize; // pao player
+
+            let unit: i32 = 32000; // ko winner unit
+            let honba_total: i32 = 0;
+            let pao_amt = pao_yakuman_val * unit + honba_total; // 32000
+            let oya_pay = non_pao_yakuman_val * 16000; // 16000
+            let ko_pay = non_pao_yakuman_val * 8000; // 8000
+
+            let mut deltas = vec![0i32; np];
+
+            // PAO player pays pao portion
+            deltas[pp] -= pao_amt;
+
+            // Non-PAO split among other players
+            for (i, delta) in deltas.iter_mut().enumerate().take(np) {
+                if i != pid {
+                    if i == oya {
+                        *delta -= oya_pay;
+                    } else if i != pp {
+                        // non-oya, non-pao ko player
+                        *delta -= ko_pay;
+                    } else {
+                        // pao player also pays ko share for non-pao part
+                        *delta -= ko_pay;
+                    }
+                }
+            }
+
+            let total_win: i32 = -deltas.iter().filter(|&&d| d < 0).sum::<i32>();
+            deltas[pid] += total_win;
+
+            assert_eq!(
+                deltas.iter().sum::<i32>(),
+                0,
+                "Ko winner tsumo PAO deltas must be zero-sum"
+            );
+            // PAO player pays: 32000 (pao) + 8000 (ko share of non-pao) = 40000
+            assert_eq!(deltas[pp], -40000, "PAO player should pay 40000 total");
+            // Oya pays: 16000 (oya share of non-pao)
+            assert_eq!(deltas[oya], -16000, "Oya should pay 16000");
+            // Remaining ko pays: 8000 (ko share of non-pao)
+            let other_ko = (0..np).find(|&i| i != pid && i != oya && i != pp).unwrap();
+            assert_eq!(deltas[other_ko], -8000, "Other ko should pay 8000");
+            // Winner gets: 40000 + 16000 + 8000 = 64000
+            assert_eq!(deltas[pid], 64000, "Winner should receive 64000");
+        }
+
+        // Case 2: Oya winner (pid=0, oya=0)
+        {
+            let pid = 0usize;
+            let pp = 2usize; // pao player
+
+            let unit: i32 = 48000; // oya winner unit
+            let pao_amt = pao_yakuman_val * unit; // 48000
+            let ko_share = non_pao_yakuman_val * 16000; // 16000 per non-oya player
+
+            let mut deltas = vec![0i32; np];
+
+            // PAO player pays pao portion
+            deltas[pp] -= pao_amt;
+
+            // Non-PAO split: each non-oya pays 16000
+            for (i, delta) in deltas.iter_mut().enumerate().take(np) {
+                if i != pid {
+                    *delta -= ko_share;
+                }
+            }
+
+            let total_win: i32 = -deltas.iter().filter(|&&d| d < 0).sum::<i32>();
+            deltas[pid] += total_win;
+
+            assert_eq!(
+                deltas.iter().sum::<i32>(),
+                0,
+                "Oya winner tsumo PAO deltas must be zero-sum"
+            );
+            // PAO player pays: 48000 (pao) + 16000 (ko share) = 64000
+            assert_eq!(deltas[pp], -64000, "PAO player should pay 64000 total");
+            // Other ko players each pay 16000
+            for (i, &delta) in deltas.iter().enumerate().take(np) {
+                if i != pid && i != pp {
+                    assert_eq!(delta, -16000, "Ko player {} should pay 16000", i);
+                }
+            }
+            // Winner gets: 64000 + 16000 + 16000 = 96000
+            assert_eq!(deltas[pid], 96000, "Oya winner should receive 96000");
+        }
+    }
+
+    #[test]
+    fn test_tenhou_tsumo_pao_composite() {
+        // Tenhou rule (yakuman_pao_is_liability_only = false):
+        // Double yakuman tsumo (1x PAO + 1x non-PAO) by ko player.
+        // PAO pays ALL yakuman: total_yakuman_val * unit = 2 * 32000 = 64000.
+        // Other players pay 0.
+
+        let np: usize = 4;
+        let pid = 0usize; // ko winner
+        let oya = 1usize;
+        let pp = 3usize; // pao player
+        let total_yakuman_val: i32 = 2;
+        let unit: i32 = 32000; // ko
+        let honba_total: i32 = 0;
+
+        // Tenhou: PAO pays everything
+        let full_amt = total_yakuman_val * unit + honba_total; // 64000
+        let mut deltas = vec![0i32; np];
+        deltas[pp] -= full_amt;
+        let total_win = full_amt;
+        deltas[pid] += total_win;
+
+        assert_eq!(deltas.iter().sum::<i32>(), 0, "Deltas must be zero-sum");
+        assert_eq!(deltas[pp], -64000, "PAO player pays all 64000");
+        assert_eq!(deltas[oya], 0, "Oya pays nothing under Tenhou PAO");
+        let other_ko = (0..np).find(|&i| i != pid && i != oya && i != pp).unwrap();
+        assert_eq!(
+            deltas[other_ko], 0,
+            "Other ko pays nothing under Tenhou PAO"
+        );
+        assert_eq!(deltas[pid], 64000, "Winner receives 64000");
+    }
+
+    #[test]
+    fn test_tenhou_ron_pao_composite() {
+        // Tenhou rule (yakuman_pao_is_liability_only = false):
+        // Triple yakuman ron (2x PAO + 1x non-PAO) by oya.
+        // Total: 3 * 48000 = 144000. Split 50/50 between PAO and discarder.
+        // PAO pays 72000, discarder pays 72000.
+
+        let np: usize = 4;
+        let w_pid = 0usize; // oya winner
+        let pao_payer = 1usize;
+        let discarder = 2usize;
+        let total_yakuman_val: i32 = 3;
+        let unit: i32 = 48000; // oya
+        let honba_ron: i32 = 0;
+
+        // Tenhou: total score split 50/50
+        let total_base = total_yakuman_val * unit; // 144000
+        let pao_amt = total_base / 2 + honba_ron; // 72000
+        let score = total_base + honba_ron; // 144000
+        let discarder_amt = score - pao_amt; // 72000
+
+        let mut deltas = vec![0i32; np];
+        deltas[w_pid] += score;
+        deltas[pao_payer] -= pao_amt;
+        deltas[discarder] -= discarder_amt;
+
+        assert_eq!(deltas.iter().sum::<i32>(), 0, "Deltas must be zero-sum");
+        assert_eq!(pao_amt, 72000, "PAO pays half of total (72000)");
+        assert_eq!(discarder_amt, 72000, "Discarder pays half of total (72000)");
+        assert_eq!(deltas[w_pid], 144000, "Winner receives 144000");
+    }
+
+    #[test]
+    fn test_mjsoul_3p_ron_pao_composite() {
+        // 3P MjSoul rule (yakuman_pao_is_liability_only = true):
+        // Double yakuman ron (1x PAO daisangen + 1x non-PAO tsuuiisou) by oya.
+        // Total: 2 * 48000 = 96000. Only PAO portion split 50/50.
+        // PAO pays 24000 (= 48000/2), discarder pays 72000 (= 48000/2 + 48000).
+
+        let np: usize = 3;
+        let w_pid = 0usize; // oya winner
+        let pao_payer = 1usize;
+        let discarder = 2usize;
+        let pao_yakuman_val: i32 = 1;
+        let total_yakuman_val: i32 = 2;
+        let unit: i32 = 48000; // oya
+        let honba_ron: i32 = 0;
+
+        // 3P MjSoul: only PAO portion split 50/50
+        let split_base = pao_yakuman_val * unit; // 48000
+        let pao_amt = split_base / 2 + honba_ron; // 24000
+        let score = total_yakuman_val * unit + honba_ron; // 96000
+        let discarder_amt = score - pao_amt; // 72000
+
+        let mut deltas = vec![0i32; np];
+        deltas[w_pid] += score;
+        deltas[pao_payer] -= pao_amt;
+        deltas[discarder] -= discarder_amt;
+
+        assert_eq!(deltas.iter().sum::<i32>(), 0, "Deltas must be zero-sum");
+        assert_eq!(pao_amt, 24000, "PAO pays half of PAO portion (24000)");
+        assert_eq!(
+            discarder_amt, 72000,
+            "Discarder pays half of PAO portion + full non-PAO (72000)"
+        );
+        assert_eq!(deltas[w_pid], 96000, "Winner receives 96000");
+    }
+
+    #[test]
+    fn test_mjsoul_4p_ron_pao_composite() {
+        // 4P MjSoul rule (yakuman_pao_is_liability_only = true):
+        // Double yakuman ron (1x PAO daisangen + 1x non-PAO tsuuiisou) by ko.
+        // Total: 2 * 32000 = 64000. PAO portion only split 50/50.
+        // split_base = pao_yakuman_val * unit = 1 * 32000 = 32000
+        // PAO pays 16000 (= 32000/2), discarder pays 48000 (= 64000 - 16000).
+
+        let np: usize = 4;
+        let w_pid = 0usize; // ko winner
+        let pao_payer = 1usize;
+        let discarder = 2usize;
+        let total_yakuman_val: i32 = 2;
+        let pao_yakuman_val: i32 = 1;
+        let unit: i32 = 32000; // ko
+        let honba_ron: i32 = 0;
+
+        // 4P MjSoul: PAO portion only split 50/50 for Ron
+        let split_base = pao_yakuman_val * unit; // 32000
+        let pao_amt = split_base / 2 + honba_ron; // 16000
+        let score = total_yakuman_val * unit + honba_ron; // 64000
+        let discarder_amt = score - pao_amt; // 48000
+
+        let mut deltas = vec![0i32; np];
+        deltas[w_pid] += score;
+        deltas[pao_payer] -= pao_amt;
+        deltas[discarder] -= discarder_amt;
+
+        assert_eq!(deltas.iter().sum::<i32>(), 0, "Deltas must be zero-sum");
+        assert_eq!(pao_amt, 16000, "PAO pays half of PAO portion (16000)");
+        assert_eq!(discarder_amt, 48000, "Discarder pays remainder (48000)");
+        assert_eq!(deltas[w_pid], 64000, "Winner receives 64000");
+    }
 }

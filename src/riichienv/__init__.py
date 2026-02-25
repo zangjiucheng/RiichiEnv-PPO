@@ -2,8 +2,6 @@ from . import convert
 from ._riichienv import (  # type: ignore
     GameRule,
     HandEvaluator3P,
-    KanDoraTimingMode,
-    KuikaeMode,
     Kyoku,
     Meld,
     MeldType,
@@ -58,8 +56,6 @@ __all__ = [
     "RiichiEnv",
     "GameRule",
     "Phase",
-    "KanDoraTimingMode",
-    "KuikaeMode",
     "GameType",
     "WinResult",
     "HandEvaluator",

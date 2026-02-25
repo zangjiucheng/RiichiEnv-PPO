@@ -636,12 +636,40 @@ impl GameState3P {
                         } else {
                             vec![]
                         };
-                        let res = calc.calc(
+                        let mut res = calc.calc(
                             win_tile,
                             self.wall.dora_indicators.clone(),
                             ura_indicators,
-                            Some(cond),
+                            Some(cond.clone()),
                         );
+
+                        // Cap double yakuman patterns when not enabled per rule flags
+                        if res.yakuman && res.han > 13 {
+                            let mut cap = 0u32;
+                            for &y in &res.yaku {
+                                match y {
+                                    47 if !self.rule.is_junsei_chuurenpoutou_double => cap += 13,
+                                    48 if !self.rule.is_suuankou_tanki_double => cap += 13,
+                                    49 if !self.rule.is_kokushi_musou_13machi_double => cap += 13,
+                                    50 if !self.rule.is_daisuushii_double => cap += 13,
+                                    _ => {}
+                                }
+                            }
+                            if cap > 0 {
+                                res.han = res.han.saturating_sub(cap).max(13);
+                                let capped = crate::score::calculate_score(
+                                    res.han as u8,
+                                    0,
+                                    pid == self.oya,
+                                    cond.tsumo,
+                                    cond.honba,
+                                    NP as u8,
+                                );
+                                res.ron_agari = capped.pay_ron;
+                                res.tsumo_agari_oya = capped.pay_tsumo_oya;
+                                res.tsumo_agari_ko = capped.pay_tsumo_ko;
+                            }
+                        }
 
                         if res.is_win {
                             let mut deltas = vec![0i32; NP];
@@ -653,10 +681,12 @@ impl GameState3P {
 
                             if res.yakuman {
                                 for &yid in &res.yaku {
-                                    let val = if [47, 48, 49, 50].contains(&yid) {
-                                        2
-                                    } else {
-                                        1
+                                    let val = match yid {
+                                        47 if self.rule.is_junsei_chuurenpoutou_double => 2,
+                                        48 if self.rule.is_suuankou_tanki_double => 2,
+                                        49 if self.rule.is_kokushi_musou_13machi_double => 2,
+                                        50 if self.rule.is_daisuushii_double => 2,
+                                        _ => 1,
                                     };
                                     total_yakuman_val += val;
                                     if let Some(liable) =
@@ -678,38 +708,47 @@ impl GameState3P {
                                     16000 + (np - 2) * 8000 // ko tsumo: oya pays 16000 + (np-2) ko pay 8000
                                 };
                                 let honba_total = self.honba as i32 * (np - 1) * 100;
-                                let pao_amt = pao_yakuman_val * unit + honba_total;
-                                let non_pao_yakuman_val = total_yakuman_val - pao_yakuman_val;
-                                let non_pao_amt = non_pao_yakuman_val * unit;
 
                                 if let Some(pp) = pao_payer {
-                                    deltas[pp as usize] -= pao_amt;
-                                    total_win += pao_amt;
-                                }
+                                    if self.rule.yakuman_pao_is_liability_only {
+                                        // Majsoul: PAO pays PAO portion only, non-PAO split normally
+                                        let pao_amt = pao_yakuman_val * unit + honba_total;
+                                        let non_pao_yakuman_val =
+                                            total_yakuman_val - pao_yakuman_val;
 
-                                if non_pao_amt > 0 {
-                                    if pid == self.oya {
-                                        let share = non_pao_amt / (NP as i32 - 1);
-                                        for i in 0..NP as u8 {
-                                            if i != pid {
-                                                deltas[i as usize] -= share;
-                                                total_win += share;
-                                            }
-                                        }
-                                    } else {
-                                        let oya_share = non_pao_amt / 2;
-                                        let ko_share = non_pao_amt / (NP as i32 - 1);
-                                        for i in 0..NP as u8 {
-                                            if i != pid {
-                                                if i == self.oya {
-                                                    deltas[i as usize] -= oya_share;
-                                                    total_win += oya_share;
-                                                } else {
-                                                    deltas[i as usize] -= ko_share;
-                                                    total_win += ko_share;
+                                        deltas[pp as usize] -= pao_amt;
+                                        total_win += pao_amt;
+
+                                        if non_pao_yakuman_val > 0 {
+                                            if pid == self.oya {
+                                                let share = non_pao_yakuman_val * 16000;
+                                                for i in 0..NP as u8 {
+                                                    if i != pid {
+                                                        deltas[i as usize] -= share;
+                                                        total_win += share;
+                                                    }
+                                                }
+                                            } else {
+                                                let oya_pay = non_pao_yakuman_val * 16000;
+                                                let ko_pay = non_pao_yakuman_val * 8000;
+                                                for i in 0..NP as u8 {
+                                                    if i != pid {
+                                                        if i == self.oya {
+                                                            deltas[i as usize] -= oya_pay;
+                                                            total_win += oya_pay;
+                                                        } else {
+                                                            deltas[i as usize] -= ko_pay;
+                                                            total_win += ko_pay;
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
+                                    } else {
+                                        // Tenhou: PAO pays ALL yakuman (full amount)
+                                        let full_amt = total_yakuman_val * unit + honba_total;
+                                        deltas[pp as usize] -= full_amt;
+                                        total_win += full_amt;
                                     }
                                 }
                             } else if pid == self.oya {
@@ -833,11 +872,7 @@ impl GameState3P {
                 let (target_pid, win_tile) = self.last_discard.unwrap_or((self.current_player, 0));
                 ron_claims.sort_by_key(|&pid| (pid + NP as u8 - target_pid) % NP as u8);
 
-                let winners = if self.rule.allow_double_ron {
-                    ron_claims
-                } else {
-                    vec![ron_claims[0]]
-                };
+                let winners = ron_claims;
 
                 let mut total_deltas = [0i32; NP];
                 let mut oya_won = false;
@@ -889,12 +924,40 @@ impl GameState3P {
                     } else {
                         vec![]
                     };
-                    let res = calc.calc(
+                    let mut res = calc.calc(
                         win_tile,
                         self.wall.dora_indicators.clone(),
                         ura_indicators,
                         Some(cond),
                     );
+
+                    // Cap double yakuman patterns when not enabled per rule flags
+                    if res.yakuman && res.han > 13 {
+                        let mut cap = 0u32;
+                        for &y in &res.yaku {
+                            match y {
+                                47 if !self.rule.is_junsei_chuurenpoutou_double => cap += 13,
+                                48 if !self.rule.is_suuankou_tanki_double => cap += 13,
+                                49 if !self.rule.is_kokushi_musou_13machi_double => cap += 13,
+                                50 if !self.rule.is_daisuushii_double => cap += 13,
+                                _ => {}
+                            }
+                        }
+                        if cap > 0 {
+                            res.han = res.han.saturating_sub(cap).max(13);
+                            let capped = crate::score::calculate_score(
+                                res.han as u8,
+                                0,
+                                w_pid == self.oya,
+                                false,
+                                ron_honba,
+                                NP as u8,
+                            );
+                            res.ron_agari = capped.pay_ron;
+                            res.tsumo_agari_oya = capped.pay_tsumo_oya;
+                            res.tsumo_agari_ko = capped.pay_tsumo_ko;
+                        }
+                    }
 
                     if res.is_win {
                         let score = res.ron_agari as i32;
@@ -902,24 +965,40 @@ impl GameState3P {
                         let mut pao_amt = 0;
 
                         if res.yakuman {
-                            let mut pao_yakuman_val = 0;
+                            let mut has_pao = false;
+                            let mut total_yakuman_val = 0i32;
+                            let mut pao_yakuman_val = 0i32;
                             for &yid in &res.yaku {
-                                let val = if [47, 48, 49, 50].contains(&yid) {
-                                    2
-                                } else {
-                                    1
+                                let val: i32 = match yid {
+                                    47 if self.rule.is_junsei_chuurenpoutou_double => 2,
+                                    48 if self.rule.is_suuankou_tanki_double => 2,
+                                    49 if self.rule.is_kokushi_musou_13machi_double => 2,
+                                    50 if self.rule.is_daisuushii_double => 2,
+                                    _ => 1,
                                 };
+                                total_yakuman_val += val;
                                 if let Some(liable) =
                                     self.players[w_pid as usize].pao.get(&(yid as u8))
                                 {
-                                    pao_yakuman_val += val;
+                                    has_pao = true;
                                     pao_payer = *liable;
+                                    pao_yakuman_val += val;
                                 }
                             }
-                            if pao_yakuman_val > 0 {
-                                let unit = if w_pid == self.oya { 48000 } else { 32000 };
-                                pao_amt = pao_yakuman_val * unit / 2
-                                    + ron_honba as usize * (NP - 1) * 100;
+                            if has_pao {
+                                // Ron with PAO: split between PAO player and deal-in player.
+                                // yakuman_pao_is_liability_only controls the split base:
+                                //   true  (MjSoul): only PAO-triggering yakuman portion split 50/50
+                                //   false (Tenhou): total yakuman split 50/50
+                                let is_oya = w_pid == self.oya;
+                                let unit: i32 = if is_oya { 48000 } else { 32000 };
+                                let honba_ron = ron_honba as i32 * (NP as i32 - 1) * 100;
+                                let split_base = if self.rule.yakuman_pao_is_liability_only {
+                                    pao_yakuman_val * unit
+                                } else {
+                                    total_yakuman_val * unit
+                                };
+                                pao_amt = (split_base / 2 + honba_ron) as usize;
                             }
                         }
 
@@ -1173,6 +1252,14 @@ impl GameState3P {
             self.riichi_pending_acceptance = Some(pid);
         }
 
+        // Tenhou: reveal pending kan doras before dahai event
+        if !self.rule.open_kan_dora_after_discard {
+            while self.wall.pending_kan_dora_count > 0 {
+                self.wall.pending_kan_dora_count -= 1;
+                self._reveal_kan_dora();
+            }
+        }
+
         if !self.skip_mjai_logging {
             let mut ev = serde_json::Map::new();
             ev.insert("type".to_string(), Value::String("dahai".to_string()));
@@ -1182,9 +1269,12 @@ impl GameState3P {
             self._push_mjai_event(Value::Object(ev));
         }
 
-        while self.wall.pending_kan_dora_count > 0 {
-            self.wall.pending_kan_dora_count -= 1;
-            self._reveal_kan_dora();
+        // MjSoul: reveal pending kan doras after dahai event
+        if self.rule.open_kan_dora_after_discard {
+            while self.wall.pending_kan_dora_count > 0 {
+                self.wall.pending_kan_dora_count -= 1;
+                self._reveal_kan_dora();
+            }
         }
 
         self.players[pid as usize].missed_agari_doujun = false;
@@ -1254,6 +1344,37 @@ impl GameState3P {
                 from_who,
                 called_tile: ct,
             });
+
+            // PAO check for Daiminkan
+            if action.action_type == ActionType::Daiminkan {
+                let (discarder, tile) = self.last_discard.unwrap();
+                let tile_val = tile / 4;
+                if (31..=33).contains(&tile_val) {
+                    let dragon_melds = self.players[p_idx]
+                        .melds
+                        .iter()
+                        .filter(|m| {
+                            let t = m.tiles[0] / 4;
+                            (31..=33).contains(&t) && (m.meld_type != MeldType::Chi)
+                        })
+                        .count();
+                    if dragon_melds == 3 {
+                        self.players[p_idx].pao.insert(37, discarder);
+                    }
+                } else if (27..=30).contains(&tile_val) {
+                    let wind_melds = self.players[p_idx]
+                        .melds
+                        .iter()
+                        .filter(|m| {
+                            let t = m.tiles[0] / 4;
+                            (27..=30).contains(&t) && (m.meld_type != MeldType::Chi)
+                        })
+                        .count();
+                    if wind_melds == 4 {
+                        self.players[p_idx].pao.insert(50, discarder);
+                    }
+                }
+            }
         }
 
         self.is_first_turn = false;
@@ -1301,37 +1422,18 @@ impl GameState3P {
                 }
             }
 
-            let has_pending_doras = self.wall.pending_kan_dora_count > 0;
-            match self.rule.kan_dora_timing {
-                crate::rule::KanDoraTimingMode::MajsoulImmediate => {
-                    // MjSoul: reveal any pending doras from previous kans first
-                    if has_pending_doras {
-                        while self.wall.pending_kan_dora_count > 0 {
-                            self.wall.pending_kan_dora_count -= 1;
-                            self._reveal_kan_dora();
-                        }
-                    }
-                    // Ankan reveals immediately, Kakan/Daiminkan defer to after discard
-                    if action.action_type == ActionType::Ankan {
-                        self._reveal_kan_dora();
-                    } else {
-                        self.wall.pending_kan_dora_count += 1;
-                    }
-                }
-                crate::rule::KanDoraTimingMode::TenhouImmediate
-                | crate::rule::KanDoraTimingMode::AfterDiscard => {
-                    if has_pending_doras {
-                        while self.wall.pending_kan_dora_count > 0 {
-                            self.wall.pending_kan_dora_count -= 1;
-                            self._reveal_kan_dora();
-                        }
-                    }
-                    if action.action_type == ActionType::Ankan {
-                        self._reveal_kan_dora();
-                    } else {
-                        self.wall.pending_kan_dora_count += 1;
-                    }
-                }
+            // Reveal any pending doras from previous kans
+            while self.wall.pending_kan_dora_count > 0 {
+                self.wall.pending_kan_dora_count -= 1;
+                self._reveal_kan_dora();
+            }
+
+            // Ankan: always reveal dora immediately (before rinshan tsumo)
+            // Daiminkan/Kakan: defer dora reveal to after discard
+            if action.action_type == ActionType::Ankan {
+                self._reveal_kan_dora();
+            } else {
+                self.wall.pending_kan_dora_count += 1;
             }
 
             if !self.skip_mjai_logging {

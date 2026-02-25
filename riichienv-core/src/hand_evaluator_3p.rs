@@ -153,8 +153,14 @@ impl HandEvaluator3P {
         let yaku_res = yaku_3p::calculate_yaku_3p(&hand_14, &self.melds, &ctx, win_tile_34);
 
         let is_oya = conditions.player_wind == Wind::East;
+        // Kazoe yakuman: cap han at 13 for scoring (single yakuman)
+        let scoring_han = if yaku_res.yakuman_count == 0 && yaku_res.han >= 13 {
+            13
+        } else {
+            yaku_res.han
+        };
         let score_res = score::calculate_score(
-            yaku_res.han,
+            scoring_han,
             yaku_res.fu,
             is_oya,
             conditions.tsumo,
