@@ -2,7 +2,7 @@ ppo:
   game:
     n_players: 3
   algorithm: ppo
-  load_model: /data/workspace/riichienv/ppo_3p/cql_model.pth
+  load_model: /data/workspace/riichienv-ml/3p/cql_model.pth
   device: cuda
   model_class: riichienv_ml.models.actor_critic.ActorCriticNetwork
   encoder_class: riichienv_ml.features.feat_v1.ObservationEncoder
@@ -16,8 +16,8 @@ ppo:
   gae_lambda: 0.95
   entropy_coef: 0.001
   value_coef: 0.5
-  grp_model: /data/workspace/riichienv/ppo_3p/grp_model.pth
-  pts_weight: [6.0, 4.0, 0.0]
+  grp_model: /data/workspace/riichienv-ml/3p/grp_model.pth
+  pts_weight: [4.0, 2.0, 0.0]
   weight_decay: 0.1
   alpha_kl: 0.1
   alpha_kl_warmup_steps: 50
@@ -27,7 +27,7 @@ ppo:
   worker_device: cuda
   gpu_per_worker: 0.2
   num_envs_per_worker: 48
-  checkpoint_dir: /data/workspace/riichienv/ppo_3p/checkpoints
+  checkpoint_dir: /data/workspace/riichienv-ml/3p/ppo/checkpoints
   wandb_entity: smly
   wandb_project: riichienv-3p
   wandb_tags: [online, ppo, v1]

@@ -6,6 +6,7 @@ import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import wandb
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -83,16 +84,26 @@ class Trainer:
         scheduler = CosineAnnealingLR(optimizer, T_max=t_max, eta_min=self.lr_eta_min)
         criterion = nn.CrossEntropyLoss()
         for epoch in range(n_epochs):
-            self._train_epoch(epoch, model, optimizer, scheduler, criterion)
-            self._val_epoch(epoch, model, criterion)
+            train_loss, train_acc = self._train_epoch(epoch, model, optimizer, scheduler, criterion)
+            val_loss, val_acc = self._val_epoch(epoch, model, criterion)
             torch.save(model.state_dict(), output_path)
+            wandb.log({
+                "epoch": epoch,
+                "train/loss": train_loss,
+                "train/acc": train_acc,
+                "val/loss": val_loss,
+                "val/acc": val_acc,
+                "lr": optimizer.param_groups[0]["lr"],
+            })
 
-    def _train_epoch(self, epoch: int, model: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler._LRScheduler, criterion: nn.Module) -> None:
+    def _train_epoch(self, epoch: int, model: nn.Module, optimizer: optim.Optimizer, scheduler: optim.lr_scheduler._LRScheduler, criterion: nn.Module) -> tuple[float, float]:
         loss_meter = AverageMeter("loss", ":.4e")
         acc_meter = AverageMeter("acc", ":.4f")
 
+        estimated_steps = self._estimate_steps_per_epoch()
         model = model.train()
-        for idx, (x, y) in tqdm.tqdm(enumerate(self.train_dataloader), desc=f"epoch {epoch:d}", mininterval=1.0, ncols=100):
+        pbar = tqdm.tqdm(enumerate(self.train_dataloader), desc=f"train {epoch:d}", total=estimated_steps, mininterval=1.0, ncols=120)
+        for idx, (x, y) in pbar:
             x, y = x.to(self.device), y.to(self.device)
             optimizer.zero_grad()
             y_pred = model(x)
@@ -106,17 +117,18 @@ class Trainer:
             y_true_cls = torch.argmax(y, dim=1)
             acc = (y_pred_cls == y_true_cls).sum().item() / x.size(0)
             acc_meter.update(acc, x.size(0))
-            if idx > 0 and idx % 10000 == 0:
-                logger.info(f"(train) - {idx:d} loss: {loss_meter.avg:.4e} acc: {acc_meter.avg:.4f}")
+            pbar.set_postfix(loss=f"{loss_meter.avg:.4e}", acc=f"{acc_meter.avg:.4f}")
 
         logger.info(f"(train) epoch {epoch:d} loss: {loss_meter.avg:.4e} acc: {acc_meter.avg:.4f}")
+        return loss_meter.avg, acc_meter.avg
 
-    def _val_epoch(self, epoch, model: nn.Module, criterion: nn.Module) -> None:
+    def _val_epoch(self, epoch, model: nn.Module, criterion: nn.Module) -> tuple[float, float]:
         loss_meter = AverageMeter("loss", ":.4e")
         acc_meter = AverageMeter("acc", ":.4f")
 
         model = model.eval()
-        for idx, (x, y) in tqdm.tqdm(enumerate(self.val_dataloader), desc=f"epoch {epoch:d}", mininterval=1.0, ncols=100):
+        pbar = tqdm.tqdm(enumerate(self.val_dataloader), desc=f"val   {epoch:d}", mininterval=1.0, ncols=120)
+        for idx, (x, y) in pbar:
             x, y = x.to(self.device), y.to(self.device)
             y_pred = model(x)
             loss = criterion(y_pred, y)
@@ -126,5 +138,7 @@ class Trainer:
             y_true_cls = torch.argmax(y, dim=1)
             acc = (y_pred_cls == y_true_cls).sum().item() / x.size(0)
             acc_meter.update(acc, x.size(0))
+            pbar.set_postfix(loss=f"{loss_meter.avg:.4e}", acc=f"{acc_meter.avg:.4f}")
 
         logger.info(f"(val) epoch {epoch:d} loss: {loss_meter.avg:.4e} acc: {acc_meter.avg:.4f}")
+        return loss_meter.avg, acc_meter.avg

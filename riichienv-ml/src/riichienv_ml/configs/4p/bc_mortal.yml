@@ -2,9 +2,9 @@ bc:
   game:
     n_players: 4
   mortal: true
-  data_glob: "/data/mortal/4p/**/*.json.gz"
-  grp_model: /data/workspace/riichienv/ppo/grp_model.pth
-  output: /data/workspace/riichienv/ppo/bc_mortal_model.pth
+  data_glob: "/data/mjsoul/mjsoul-4p/**/*.jsonl.gz"
+  grp_model: /data/workspace/riichienv-ml/4p/grp_model.pth
+  output: /data/workspace/riichienv-ml/4p/bc_mortal.pth
   device: cuda
   batch_size: 128
   lr: 5e-4

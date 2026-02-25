@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging
+from riichienv_ml.utils import setup_logging, init_wandb
 from riichienv_ml.trainers.grp import Trainer
 
 
@@ -46,6 +46,7 @@ def main():
 
     log_dir = str(Path(cfg.output).parent)
     setup_logging(log_dir, "train_grp")
+    init_wandb(cfg, config_path=args.config)
 
     game = cfg.game
     trainer = Trainer(

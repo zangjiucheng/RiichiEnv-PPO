@@ -147,7 +147,7 @@ def run_training(cfg):
     round_num = 0
     last_log_step = 0
     last_eval_step = 0
-    wandb.init(project=cfg.wandb_project, config=cfg.model_dump())
+    # wandb is initialized by init_wandb() in the script
 
     os.makedirs(cfg.checkpoint_dir, exist_ok=True)
 

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging
+from riichienv_ml.utils import setup_logging, init_wandb
 
 
 def parse_args() -> argparse.Namespace:
@@ -89,6 +89,7 @@ def main():
         cfg = cfg.model_copy(update={"model": cfg.model.model_copy(update=model_overrides)})
 
     setup_logging(cfg.checkpoint_dir, "train_ppo")
+    init_wandb(cfg, config_path=args.config)
 
     if cfg.algorithm == "ppo":
         from riichienv_ml.trainers.ppo import run_ppo_training

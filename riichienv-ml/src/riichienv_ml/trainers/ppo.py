@@ -132,7 +132,7 @@ def run_ppo_training(cfg):
 
     step = 0
     episodes = 0
-    wandb.init(project=cfg.wandb_project, config=cfg.model_dump())
+    # wandb is initialized by init_wandb() in the script
 
     os.makedirs(cfg.checkpoint_dir, exist_ok=True)
 

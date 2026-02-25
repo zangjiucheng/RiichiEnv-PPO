@@ -45,8 +45,6 @@ class Trainer:
         num_workers: int = 8,
         weight_decay: float = 0.0,
         aux_weight: float = 0.0,
-        wandb_entity: str = "smly",
-        wandb_project: str = "riichienv-offline",
         model_config: dict | None = None,
         model_class: str = "riichienv_ml.models.q_network.QNetwork",
         dataset_class: str = "riichienv_ml.datasets.mjai_logs.MCDataset",
@@ -69,8 +67,6 @@ class Trainer:
         self.num_workers = num_workers
         self.weight_decay = weight_decay
         self.aux_weight = aux_weight
-        self.wandb_entity = wandb_entity
-        self.wandb_project = wandb_project
         self.model_config = model_config or {}
         self.model_class = model_class
         self.dataset_class = dataset_class
@@ -125,21 +121,7 @@ class Trainer:
         model.train()
 
         step = 0
-        run = wandb.init(
-            entity=self.wandb_entity,
-            project=self.wandb_project,
-            config={
-                "learning_rate": self.lr,
-                "batch_size": self.batch_size,
-                "gamma": self.gamma,
-                "alpha": self.alpha,
-                "weight_decay": self.weight_decay,
-                "aux_weight": self.aux_weight,
-                "dataset": self.data_glob,
-                "n_players": self.n_players,
-                **self.model_config,
-            },
-        )
+        run = wandb.run  # Initialized by init_wandb() in the script
 
         loss_meter = AverageMeter(name="loss")
         cql_meter = AverageMeter(name="cql")
@@ -206,7 +188,7 @@ class Trainer:
                         log_dict["aux"] = aux_meter.avg
                     log_msg += ")"
                     print(log_msg)
-                    run.log(log_dict, step=step)
+                    wandb.log(log_dict, step=step)
 
                 step += 1
                 scheduler.step()
@@ -223,4 +205,4 @@ class Trainer:
             if step >= self.limit:
                 break
 
-        run.finish()
+        wandb.finish()

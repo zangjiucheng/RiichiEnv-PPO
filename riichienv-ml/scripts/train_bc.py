@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging
+from riichienv_ml.utils import setup_logging, init_wandb
 from riichienv_ml.trainers.bc_logs import Trainer
 
 
@@ -63,6 +63,7 @@ def main():
 
     log_dir = str(Path(cfg.output).parent)
     setup_logging(log_dir, "train_bc")
+    init_wandb(cfg, config_path=args.config)
 
     # Auto-detect mortal mode
     if cfg.mortal:
@@ -87,8 +88,6 @@ def main():
         num_workers=cfg.num_workers,
         weight_decay=cfg.weight_decay,
         aux_weight=cfg.aux_weight,
-        wandb_entity=cfg.wandb_entity,
-        wandb_project=cfg.wandb_project,
         model_config=cfg.model.model_dump(),
         model_class=cfg.model_class,
         dataset_class=cfg.dataset_class,
