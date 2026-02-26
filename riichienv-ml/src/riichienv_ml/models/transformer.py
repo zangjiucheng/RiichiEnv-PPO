@@ -20,24 +20,26 @@ class TransformerActorCritic(nn.Module):
 
     Input:  (B, PACKED_SIZE)  float32 — from SequenceFeaturePackedEncoder
     Output: (logits, value) tuple — (B, num_actions), (B,)
-    """
 
-    # Packed layout constants (must match SequenceFeaturePackedEncoder)
-    _S = SequenceFeatureEncoder.MAX_SPARSE_LEN   # 25
-    _N = SequenceFeatureEncoder.NUM_NUMERIC       # 12
-    _P = SequenceFeatureEncoder.MAX_PROG_LEN     # 512
-    _C = SequenceFeatureEncoder.MAX_CAND_LEN     # 64
+    V2 defaults: d_model=384, max_prog_len=256, max_cand_len=32, d_type=96, d_other=32
+    V1 compat:   pass d_sub=32, max_prog_len=512, max_cand_len=64
+    """
 
     def __init__(
         self,
-        d_model: int = 256,
+        d_model: int = 384,
         nhead: int = 8,
         num_layers: int = 6,
-        dim_feedforward: int = 1024,
+        dim_feedforward: int = 1536,
         dropout: float = 0.1,
         num_actions: int = 82,
-        # Embedding sub-dimension per tuple field
-        d_sub: int = 32,
+        # Embedding sub-dimensions (asymmetric)
+        d_sub: int | None = None,   # V1 compat: if set, d_type=d_other=d_sub
+        d_type: int = 96,           # type field embedding dim
+        d_other: int = 32,          # other field embedding dim
+        # Sequence length (must match encoder)
+        max_prog_len: int = 256,
+        max_cand_len: int = 32,
         # Vocab sizes (from SequenceFeatureEncoder)
         sparse_vocab: int = SequenceFeatureEncoder.SPARSE_VOCAB_SIZE,   # 442
         sparse_pad: int = SequenceFeatureEncoder.SPARSE_PAD,            # 441
@@ -49,6 +51,17 @@ class TransformerActorCritic(nn.Module):
         self.d_model = d_model
         self.num_actions = num_actions
 
+        # V1 backward compat: uniform d_sub overrides asymmetric dims
+        if d_sub is not None:
+            d_type = d_sub
+            d_other = d_sub
+
+        # Packed layout constants (must match SequenceFeaturePackedEncoder)
+        self._S = SequenceFeatureEncoder.MAX_SPARSE_LEN   # 25
+        self._N = SequenceFeatureEncoder.NUM_NUMERIC       # 12
+        self._P = max_prog_len
+        self._C = max_cand_len
+
         # --- Embedding layers ---
         self.sparse_embed = nn.Embedding(
             sparse_vocab, d_model, padding_idx=sparse_pad)
@@ -59,20 +72,26 @@ class TransformerActorCritic(nn.Module):
         )
 
         # Progression: embed each of 5 fields → concat → project
+        # field[1] is type (vocab=277) → d_type; others → d_other
+        prog_sub_dims = [d_other if i != 1 else d_type for i in range(len(prog_dims))]
         self.prog_embeds = nn.ModuleList([
-            nn.Embedding(dim, d_sub) for dim in prog_dims
+            nn.Embedding(dim, d_s) for dim, d_s in zip(prog_dims, prog_sub_dims)
         ])
+        prog_cat_dim = sum(prog_sub_dims)
         self.prog_proj = nn.Sequential(
-            nn.Linear(len(prog_dims) * d_sub, d_model),
+            nn.Linear(prog_cat_dim, d_model),
             nn.LayerNorm(d_model),
         )
 
         # Candidates: embed each of 4 fields → concat → project
+        # field[0] is type (vocab=280) → d_type; others → d_other
+        cand_sub_dims = [d_other if i != 0 else d_type for i in range(len(cand_dims))]
         self.cand_embeds = nn.ModuleList([
-            nn.Embedding(dim, d_sub) for dim in cand_dims
+            nn.Embedding(dim, d_s) for dim, d_s in zip(cand_dims, cand_sub_dims)
         ])
+        cand_cat_dim = sum(cand_sub_dims)
         self.cand_proj = nn.Sequential(
-            nn.Linear(len(cand_dims) * d_sub, d_model),
+            nn.Linear(cand_cat_dim, d_model),
             nn.LayerNorm(d_model),
         )
 
@@ -83,8 +102,8 @@ class TransformerActorCritic(nn.Module):
         # --- Segment embeddings (4 groups: sparse / numeric / prog / cand) ---
         self.segment_embed = nn.Embedding(4, d_model)
 
-        # --- Positional encoding (sinusoidal, max 603 tokens) ---
-        max_seq = 1 + self._S + 1 + self._P + self._C  # 603
+        # --- Positional encoding (sinusoidal) ---
+        max_seq = 1 + self._S + 1 + self._P + self._C
         self.register_buffer("pos_enc", self._sinusoidal_pe(max_seq, d_model))
 
         # --- Transformer encoder (pre-LN for stability) ---
@@ -135,7 +154,7 @@ class TransformerActorCritic(nn.Module):
 
     # ------------------------------------------------------------------
     def _unpack(self, x: torch.Tensor):
-        """Unpack flat (B, 3454) tensor into components."""
+        """Unpack flat (B, PACKED_SIZE) tensor into components."""
         o = 0
         sparse = x[:, o:o + self._S].long();                        o += self._S
         numeric = x[:, o:o + self._N];                               o += self._N
@@ -160,18 +179,18 @@ class TransformerActorCritic(nn.Module):
         # Project numeric: (B, 1, d)
         numeric_emb = self.numeric_proj(numeric).unsqueeze(1)
 
-        # Embed progression 5-tuples: (B, 512, d)
+        # Embed progression 5-tuples: (B, P, d)
         prog_parts = [emb(prog[:, :, i]) for i, emb in enumerate(self.prog_embeds)]
         prog_emb = self.prog_proj(torch.cat(prog_parts, dim=-1))
 
-        # Embed candidate 4-tuples: (B, 64, d)
+        # Embed candidate 4-tuples: (B, C, d)
         cand_parts = [emb(cand[:, :, i]) for i, emb in enumerate(self.cand_embeds)]
         cand_emb = self.cand_proj(torch.cat(cand_parts, dim=-1))
 
         # CLS token: (B, 1, d)
         cls = self.cls_token.expand(B, -1, -1)
 
-        # Concatenate: [CLS, sparse(25), numeric(1), prog(512), cand(64)]
+        # Concatenate: [CLS, sparse(S), numeric(1), prog(P), cand(C)]
         tokens = torch.cat([cls, sparse_emb, numeric_emb, prog_emb, cand_emb], dim=1)
 
         # Add segment embeddings
