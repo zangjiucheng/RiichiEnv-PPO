@@ -15,6 +15,7 @@ from riichienv import (
 )
 from riichienv._riichienv import Observation3P
 from riichienv.convert import tid_to_mjai
+from riichienv.consts import N_TILE_TYPES_3P
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -227,13 +228,13 @@ class TestSanmaObservation:
         """encode() returns 74 channels * 27 tiles * 4 bytes."""
         _, obs = _create_sanma_env()
         enc = obs[0].encode()
-        assert len(enc) == 74 * 27 * 4
+        assert len(enc) == 74 * N_TILE_TYPES_3P * 4
 
     def test_encode_extended_shape(self):
         """encode_extended() returns 215 channels * 27 tiles * 4 bytes."""
         _, obs = _create_sanma_env()
         enc = obs[0].encode_extended()
-        assert len(enc) == 215 * 27 * 4
+        assert len(enc) == 215 * N_TILE_TYPES_3P * 4
 
     def test_mask_size(self):
         """mask() length should match action_space_size."""
@@ -270,7 +271,7 @@ class TestSanmaObservation:
             o = obs[env.current_player]
             enc = o.encode_discard_history_decay()
             # (3, 27) array of f32 = 3 * 27 * 4 bytes
-            assert len(enc) == 3 * 27 * 4
+            assert len(enc) == 3 * N_TILE_TYPES_3P * 4
 
     def test_encode_shanten_efficiency(self):
         _, obs = _create_sanma_env()
@@ -288,19 +289,19 @@ class TestSanmaObservation:
         _, obs = _create_sanma_env()
         enc = obs[0].encode_kawa_overview()
         # (3, 7, 27) array of f32
-        assert len(enc) == 3 * 7 * 27 * 4
+        assert len(enc) == 3 * 7 * N_TILE_TYPES_3P * 4
 
     def test_encode_fuuro_overview(self):
         _, obs = _create_sanma_env()
         enc = obs[0].encode_fuuro_overview()
         # (3, 4, 5, 27) array of f32
-        assert len(enc) == 3 * 4 * 5 * 27 * 4
+        assert len(enc) == 3 * 4 * 5 * N_TILE_TYPES_3P * 4
 
     def test_encode_ankan_overview(self):
         _, obs = _create_sanma_env()
         enc = obs[0].encode_ankan_overview()
         # (3, 27) array of f32
-        assert len(enc) == 3 * 27 * 4
+        assert len(enc) == 3 * N_TILE_TYPES_3P * 4
 
     def test_encode_action_availability(self):
         _, obs = _create_sanma_env()
