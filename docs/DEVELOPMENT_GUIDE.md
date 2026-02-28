@@ -258,17 +258,60 @@ uv run ty check
 
 ## Benchmarks
 
-To run the Agari calculation benchmark (performance verification):
+The `riichienv-core` crate includes [Criterion](https://bheisler.github.io/criterion.rs/book/)-based benchmarks for agari detection, hand evaluation, and score calculation.
+
+### Running Benchmarks
 
 ```bash
-# Build riichienv in release mode first
-uv run maturin develop --release
-
-# Run benchmark from benchmark project
-uv sync  # Install dependencies (riichienv, mahjong)
-uv run agari
+cd riichienv-core
+cargo bench --bench agari_bench
 ```
 
+Results are printed to stdout and HTML reports are generated under `target/criterion/report/index.html`.
+
+### Benchmark Groups
+
+| Group | What it measures |
+|---|---|
+| `is_agari/positive` | Agari detection on winning hands (816 cases) |
+| `is_agari/negative` | Agari detection on non-winning hands (200 cases) |
+| `is_tenpai` | Tenpai check on 13-tile hands |
+| `find_divisions` | Mentsu decomposition of winning hands |
+| `hand_evaluator/calc_4p` | Full 4P pipeline: agari, yaku, fu, score (816 cases) |
+| `hand_evaluator/calc_3p` | Full 3P pipeline (402 cases) |
+| `calculate_score` | Pure score calculation across all tiers (28 combos) |
+
+### Comparing Across Versions
+
+Criterion saves baseline data in `target/criterion/`. Use named baselines to compare performance between branches:
+
+```bash
+# Save baseline on the current branch
+cargo bench --bench agari_bench -- --save-baseline main
+
+# Switch to another branch and compare
+git checkout feature-branch
+cargo bench --bench agari_bench -- --baseline main
+```
+
+### Correctness Tests
+
+Integration tests verify that all benchmark fixture data produces the expected han, fu, yaku, and score values:
+
+```bash
+cd riichienv-core
+cargo test --test agari_correctness
+```
+
+### Fixture Data
+
+Benchmark cases are stored in `riichienv-core/benches/data/`:
+
+| File | Contents |
+|---|---|
+| `agari_4p.json` | 816 winning hands (4P, extracted from MjSoul MJAI logs + synthetic yakuman) |
+| `agari_3p.json` | 402 winning hands (3P) |
+| `hands_negative.json` | 200 non-winning hands |
 
 ## Commit Messages
 

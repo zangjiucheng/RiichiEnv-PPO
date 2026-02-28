@@ -1,4 +1,4 @@
-mod agari;
+pub mod agari;
 pub mod errors;
 pub mod hand_evaluator;
 pub mod hand_evaluator_3p;
