@@ -30,6 +30,7 @@ class RewardPredictor:
         self.device: str = device
         self.n_players: int = n_players
         self.pts_weight: list[float] = pts_weight
+        self._score_norm = 35000.0 if n_players == 3 else 25000.0
 
         if input_dim is None:
             input_dim = n_players * 4 + 4
@@ -48,7 +49,7 @@ class RewardPredictor:
         scores = np.array([row[f"p{i}_init_score"] for i in range(n)]
                           + [row[f"p{i}_end_score"] for i in range(n)])
         delta_scores = np.array([row[f"p{i}_delta_score"] for i in range(n)])
-        scores = scores / 25000.0
+        scores = scores / self._score_norm
         delta_scores = delta_scores / 12000.0
         round_meta = np.array([
             row["chang"] / 3.0, row["ju"] / 3.0, row["ben"] / 4.0, row["liqibang"] / 4.0
@@ -65,7 +66,7 @@ class RewardPredictor:
         scores = np.array(
             [grp_features[f"p{i}_init_score"] for i in range(n)]
             + [grp_features[f"p{i}_end_score"] for i in range(n)]
-        ) / 25000.0
+        ) / self._score_norm
         delta_scores = np.array(
             [grp_features[f"p{i}_delta_score"] for i in range(n)]
         ) / 12000.0

@@ -5,6 +5,9 @@ unpacks it into sparse / numeric / progression / candidate groups,
 embeds each group, and processes them through a TransformerEncoder.
 
 Output: (logits, value) — same interface as ActorCriticNetwork.
+
+NOTE: Sanma (3-player) is not supported. The sparse/progression/candidate
+vocabularies and encoding logic assume 4-player mahjong.
 """
 
 import math

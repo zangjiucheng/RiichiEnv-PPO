@@ -856,6 +856,7 @@ impl LogKyoku {
             }
             state.wall.dora_indicators = doras;
 
+            // Note: 3P GameState3P does not support seq caching yet
             let iter = KyokuStepIterator3P {
                 state,
                 actions: self.actions.clone(),
@@ -941,6 +942,7 @@ impl LogKyoku {
                 }
             }
 
+            state.enable_seq_caching = true;
             let iter = KyokuStepIterator {
                 state,
                 actions: self.actions.clone(),

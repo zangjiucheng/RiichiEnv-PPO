@@ -12,8 +12,8 @@ Unlike the CNN encoder (`obs.encode()`) which produces spatial `(C, 34)` tensors
 |---------------|-------|------|-------------|
 | **Sparse** | `(25,)` | int64 | Categorical tokens for embedding lookup |
 | **Numeric** | `(12,)` | float32 | Continuous scalar features |
-| **Progression** | `(512, 5)` | int64 | Action history as 5-tuple sequences |
-| **Candidates** | `(64, 4)` | int64 | Legal actions as 4-tuple sets |
+| **Progression** | `(256, 5)` | int64 | Action history as 5-tuple sequences |
+| **Candidates** | `(32, 4)` | int64 | Legal actions as 4-tuple sets |
 
 Each variable-length group is padded to its maximum length, with accompanying boolean masks indicating real vs. padding entries.
 
@@ -122,7 +122,7 @@ numeric = np.frombuffer(numeric_bytes, dtype=np.float32)  # shape (12,)
 
 ## 3. Progression Features (Action History)
 
-**5-tuple sequence, max 512 entries**
+**5-tuple sequence, max 256 entries (default)**
 
 Each action from the kyoku start to the current decision point is encoded as a 5-tuple `(actor, type, moqie, liqi, from)`.
 
@@ -181,7 +181,7 @@ prog = np.frombuffer(prog_bytes, dtype=np.uint16).reshape(-1, 5)  # variable len
 
 ## 4. Candidate Features (Legal Actions)
 
-**4-tuple set, max 64 entries**
+**4-tuple set, max 32 entries (default)**
 
 Each legal action is encoded as a 4-tuple `(type, moqie, liqi, from)`.
 
@@ -281,11 +281,11 @@ for pid, obs in obs_dict.items():
     features = enc.encode(obs)
     # features["sparse"]      -- (25,) int64, padded with 441
     # features["numeric"]     -- (12,) float32
-    # features["progression"] -- (512, 5) int64, padded with (4, 276, 2, 2, 4)
-    # features["candidates"]  -- (64, 4) int64, padded with (279, 2, 2, 3)
+    # features["progression"] -- (256, 5) int64, padded with (4, 276, 2, 2, 4)
+    # features["candidates"]  -- (32, 4) int64, padded with (279, 2, 2, 3)
     # features["sparse_mask"] -- (25,) bool, True for real tokens
-    # features["prog_mask"]   -- (512,) bool, True for real entries
-    # features["cand_mask"]   -- (64,) bool, True for real entries
+    # features["prog_mask"]   -- (256,) bool, True for real entries
+    # features["cand_mask"]   -- (32,) bool, True for real entries
 ```
 
 ### Constants
@@ -293,8 +293,8 @@ for pid, obs in obs_dict.items():
 ```python
 SequenceFeatureEncoder.SPARSE_VOCAB_SIZE  # 442
 SequenceFeatureEncoder.MAX_SPARSE_LEN     # 25
-SequenceFeatureEncoder.MAX_PROG_LEN       # 512
-SequenceFeatureEncoder.MAX_CAND_LEN       # 64
+SequenceFeatureEncoder.MAX_PROG_LEN       # 256 (default; V1 compat: 512)
+SequenceFeatureEncoder.MAX_CAND_LEN       # 32  (default; V1 compat: 64)
 SequenceFeatureEncoder.NUM_NUMERIC         # 12
 SequenceFeatureEncoder.PROG_DIMS           # (5, 277, 3, 3, 5)
 SequenceFeatureEncoder.CAND_DIMS           # (280, 3, 3, 4)

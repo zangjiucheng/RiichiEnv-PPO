@@ -248,9 +248,10 @@ impl GameStateEventHandler for GameState {
 
                 // Update progression cache (replay mode).
                 #[cfg(feature = "python")]
-                {
+                if self.enable_seq_caching {
                     use crate::observation::sequence_features::process_single_event_progression;
                     use crate::parser::tid_to_mjai;
+                    use std::sync::Arc;
 
                     if *is_liqi || *is_wliqi {
                         let ev = serde_json::json!({"type": "reach", "actor": s});
@@ -258,7 +259,7 @@ impl GameStateEventHandler for GameState {
                             &ev,
                             &mut self.round_seq_prog_pending_reach,
                         ) {
-                            self.round_seq_progression.push(entry);
+                            Arc::make_mut(&mut self.round_seq_progression).push(entry);
                         }
                     }
                     let pai = tid_to_mjai(t);
@@ -272,7 +273,7 @@ impl GameStateEventHandler for GameState {
                         &ev,
                         &mut self.round_seq_prog_pending_reach,
                     ) {
-                        self.round_seq_progression.push(entry);
+                        Arc::make_mut(&mut self.round_seq_progression).push(entry);
                     }
                 }
 
@@ -338,9 +339,10 @@ impl GameStateEventHandler for GameState {
             } => {
                 // Update progression cache (replay mode).
                 #[cfg(feature = "python")]
-                {
+                if self.enable_seq_caching {
                     use crate::observation::sequence_features::process_single_event_progression;
                     use crate::parser::tid_to_mjai;
+                    use std::sync::Arc;
 
                     let mtype_str = match meld_type {
                         MeldType::Chi => "chi",
@@ -375,7 +377,7 @@ impl GameStateEventHandler for GameState {
                             &ev,
                             &mut self.round_seq_prog_pending_reach,
                         ) {
-                            self.round_seq_progression.push(entry);
+                            Arc::make_mut(&mut self.round_seq_progression).push(entry);
                         }
                     }
                 }
@@ -466,9 +468,10 @@ impl GameStateEventHandler for GameState {
             } => {
                 // Update progression cache (replay mode).
                 #[cfg(feature = "python")]
-                {
+                if self.enable_seq_caching {
                     use crate::observation::sequence_features::process_single_event_progression;
                     use crate::parser::tid_to_mjai;
+                    use std::sync::Arc;
 
                     let ev = if *meld_type == MeldType::Ankan {
                         let t_val = tiles[0] / 4;
@@ -494,7 +497,7 @@ impl GameStateEventHandler for GameState {
                         &ev,
                         &mut self.round_seq_prog_pending_reach,
                     ) {
-                        self.round_seq_progression.push(entry);
+                        Arc::make_mut(&mut self.round_seq_progression).push(entry);
                     }
                 }
 

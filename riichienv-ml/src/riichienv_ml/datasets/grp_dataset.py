@@ -35,10 +35,11 @@ class GrpReplayDataset(IterableDataset):
 
     def _encode_features(self, grp_features: dict, player_idx: int) -> torch.Tensor:
         n = self.n_players
+        score_norm = 35000.0 if n == 3 else 25000.0
 
         scores = np.array(
-            [grp_features[f"p{i}_init_score"] / 25000.0 for i in range(n)]
-            + [grp_features[f"p{i}_end_score"] / 25000.0 for i in range(n)]
+            [grp_features[f"p{i}_init_score"] / score_norm for i in range(n)]
+            + [grp_features[f"p{i}_end_score"] / score_norm for i in range(n)]
             + [grp_features[f"p{i}_delta_score"] / 12000.0 for i in range(n)],
             dtype=np.float32,
         )

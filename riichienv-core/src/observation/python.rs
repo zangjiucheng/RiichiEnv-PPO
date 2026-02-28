@@ -1427,10 +1427,10 @@ impl Observation {
         py: Python<'py>,
     ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
         let prog = self.encode_seq_progression();
-        let flat: Vec<u16> = prog.iter().flat_map(|t| t.iter().copied()).collect();
-        let byte_len = flat.len() * std::mem::size_of::<u16>();
+        // [u16; 5] is contiguous in memory; treat the slice as a flat u8 buffer directly.
+        let byte_len = prog.len() * std::mem::size_of::<[u16; 5]>();
         let byte_slice =
-            unsafe { std::slice::from_raw_parts(flat.as_ptr() as *const u8, byte_len) };
+            unsafe { std::slice::from_raw_parts(prog.as_ptr() as *const u8, byte_len) };
         Ok(pyo3::types::PyBytes::new(py, byte_slice))
     }
 
@@ -1444,10 +1444,10 @@ impl Observation {
         py: Python<'py>,
     ) -> PyResult<Bound<'py, pyo3::types::PyBytes>> {
         let cands = self.encode_seq_candidates();
-        let flat: Vec<u16> = cands.iter().flat_map(|t| t.iter().copied()).collect();
-        let byte_len = flat.len() * std::mem::size_of::<u16>();
+        // [u16; 4] is contiguous in memory; treat the slice as a flat u8 buffer directly.
+        let byte_len = cands.len() * std::mem::size_of::<[u16; 4]>();
         let byte_slice =
-            unsafe { std::slice::from_raw_parts(flat.as_ptr() as *const u8, byte_len) };
+            unsafe { std::slice::from_raw_parts(cands.as_ptr() as *const u8, byte_len) };
         Ok(pyo3::types::PyBytes::new(py, byte_slice))
     }
 }

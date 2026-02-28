@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+#[cfg(feature = "python")]
+use std::sync::Arc;
 
 use serde_json::Value;
 
@@ -66,10 +68,15 @@ pub struct GameState {
 
     /// Pre-computed progression tuples for the current round (shared by all players).
     /// Incrementally updated in _push_mjai_event to avoid O(N²) JSON re-parsing.
+    /// Wrapped in Arc for O(1) snapshot when creating observations.
     #[cfg(feature = "python")]
-    pub round_seq_progression: Vec<[u16; 5]>,
+    pub round_seq_progression: Arc<Vec<[u16; 5]>>,
     #[cfg(feature = "python")]
     pub round_seq_prog_pending_reach: Option<u8>,
+    /// When true, incrementally track progression tuples for sequence feature encoding.
+    /// Disable when sequence features are not needed to avoid overhead.
+    #[cfg(feature = "python")]
+    pub enable_seq_caching: bool,
 
     pub mode: GameModeConfig,
     pub game_mode: u8,
@@ -132,9 +139,11 @@ impl GameState {
             kyoku_start_event_counts: [0; NP],
             mjai_log_per_player: Default::default(),
             #[cfg(feature = "python")]
-            round_seq_progression: Vec::new(),
+            round_seq_progression: Arc::new(Vec::new()),
             #[cfg(feature = "python")]
             round_seq_prog_pending_reach: None,
+            #[cfg(feature = "python")]
+            enable_seq_caching: false,
             mode,
             game_mode,
             skip_mjai_logging,
@@ -164,7 +173,7 @@ impl GameState {
         self.kyoku_start_event_counts = [0; NP];
         #[cfg(feature = "python")]
         {
-            self.round_seq_progression.clear();
+            Arc::make_mut(&mut self.round_seq_progression).clear();
             self.round_seq_prog_pending_reach = None;
         }
 
@@ -240,10 +249,10 @@ impl GameState {
             self.last_discard.map(|(tile, _pid)| tile as u32),
         );
 
-        // Attach pre-computed progression (full round history, O(1) clone).
+        // Attach pre-computed progression snapshot.
         #[cfg(feature = "python")]
-        {
-            obs.cached_progression = Some(self.round_seq_progression.clone());
+        if self.enable_seq_caching {
+            obs.cached_progression = Some((*self.round_seq_progression).clone());
         }
 
         obs
@@ -1745,7 +1754,7 @@ impl GameState {
         // Reset pre-computed progression cache for the new round.
         #[cfg(feature = "python")]
         {
-            self.round_seq_progression.clear();
+            Arc::make_mut(&mut self.round_seq_progression).clear();
             self.round_seq_prog_pending_reach = None;
         }
 
@@ -2092,14 +2101,14 @@ impl GameState {
         // Incrementally update pre-computed progression cache.
         // Uses the original (unmasked) event Value directly — no JSON parsing.
         #[cfg(feature = "python")]
-        {
+        if self.enable_seq_caching {
             if let Some(entry) =
                 crate::observation::sequence_features::process_single_event_progression(
                     &event,
                     &mut self.round_seq_prog_pending_reach,
                 )
             {
-                self.round_seq_progression.push(entry);
+                Arc::make_mut(&mut self.round_seq_progression).push(entry);
             }
         }
     }
