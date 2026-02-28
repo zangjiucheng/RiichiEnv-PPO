@@ -15,7 +15,7 @@
         "**/.python-version": true,
         "**/dist": true,
         "**/build": true,
-        "**/target": false
+        "**/target": true
     },
     "python.languageServer": "None",
     "ty.importStrategy": "fromEnvironment",

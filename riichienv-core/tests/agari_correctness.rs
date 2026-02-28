@@ -199,12 +199,9 @@ fn test_4p_calc_correctness() {
 /// Verify every 3P case: is_agari, han, fu, and yaku all match expected values.
 #[test]
 fn test_3p_calc_correctness() {
-    let path = "benches/data/agari_3p.json";
-    if !std::path::Path::new(path).exists() {
-        return;
-    }
     let data: BenchData = {
-        let s = fs::read_to_string(path).expect("Failed to read agari_3p.json");
+        let s = fs::read_to_string("benches/data/agari_3p.json")
+            .expect("Failed to read agari_3p.json");
         serde_json::from_str(&s).expect("Failed to parse agari_3p.json")
     };
     assert!(!data.cases.is_empty(), "3P data should not be empty");

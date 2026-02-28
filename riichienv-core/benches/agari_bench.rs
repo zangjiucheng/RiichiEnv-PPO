@@ -283,11 +283,7 @@ fn bench_hand_evaluator_calc_4p(c: &mut Criterion) {
 }
 
 fn bench_hand_evaluator_calc_3p(c: &mut Criterion) {
-    let path = "benches/data/agari_3p.json";
-    if !std::path::Path::new(path).exists() {
-        return;
-    }
-    let data = load_agari_data(path);
+    let data = load_agari_data("benches/data/agari_3p.json");
 
     type CalcInput3P = (HandEvaluator3P, u8, Vec<u8>, Vec<u8>, Conditions);
     let inputs: Vec<CalcInput3P> = data
