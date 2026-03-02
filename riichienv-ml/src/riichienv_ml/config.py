@@ -82,8 +82,8 @@ class ModelConfig(BaseModel):
 
 
 class WandbConfig(BaseModel):
-    wandb_entity: str = "smly"
-    wandb_project: str = "riichienv"
+    wandb_entity: str = "jiucheng-z-university-of-waterloo"
+    wandb_project: str = "riichippo"
     wandb_tags: list[str] = []
     wandb_group: str | None = None
 

@@ -1,9 +1,9 @@
 cql:
   game:
     n_players: 3
-  data_glob: "/data/mjsoul/mjsoul-3p/**/*.jsonl.gz"
-  grp_model: /data/workspace/riichienv-ml/3p/grp_model.pth
-  output: /data/workspace/riichienv-ml/3p/cql_model.pth
+  data_glob: "data/mjsoul/mjsoul-3p/train/**/*.jsonl.gz"
+  grp_model: artifacts/3p/grp_model.pth
+  output: artifacts/3p/cql_model.pth
   device: cuda
   batch_size: 128
   lr: 5e-4
@@ -15,8 +15,8 @@ cql:
   pts_weight: [4.0, 2.0, 0.0]
   weight_decay: 0.1
   aux_weight: 0.2
-  wandb_entity: smly
-  wandb_project: riichienv-3p
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
   wandb_tags: [offline, cql]
   model_class: riichienv_ml.models.q_network.QNetwork
   dataset_class: riichienv_ml.datasets.mjai_logs.MCDataset

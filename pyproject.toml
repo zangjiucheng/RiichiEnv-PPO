@@ -1,110 +1,28 @@
 [project]
-name = "riichienv"
-version = "0.3.4"
-authors = [
-    { name="Kohei Ozaki", email="19337+smly@users.noreply.github.com" },
-]
-description = "A High-Performance Research Environment for Riichi Mahjong"
+name = "riichienv-ml"
+version = "0.1.0"
+description = "Mahjong RL training pipeline: GRP reward shaping, offline CQL, and online DQN+CQL"
 readme = "README.md"
-# PyO3 0.27 supports Python 3.14
-requires-python = ">=3.10,<3.15"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-]
-license = "Apache-2.0"
-license-files = ["LICENSE"]
-
+requires-python = ">=3.12"
 dependencies = [
-    "pyyaml>=6.0.3",
-    "ipython",
+    "dotenv>=0.9.9",
+    "numpy>=2.4.1",
+    "polars>=1.37.1",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "torch>=2.9.1",
+    "tqdm>=4.67.1",
+    "wandb>=0.24.0",
+    "riichienv",
+    "ray[default]>=2.9.0",
+    "torchrl>=0.3.0",
+    "tensordict>=0.3.0",
+    "loguru>=0.7.3",
 ]
-
-[project.urls]
-Homepage = "https://github.com/smly/RiichiEnv"
-Issues = "https://github.com/smly/RiichiEnv/issues"
 
 [build-system]
-requires = ["maturin>=1.8.7,<2.0"]
-build-backend = "maturin"
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.maturin]
-python-source = "src"
-manifest-path = "riichienv-python/Cargo.toml"
-module-name = "riichienv._riichienv"
-features = ["extension-module"]
-
-[dependency-groups]
-dev = [
-    "maturin>=1.8.7,<2.0",
-    "pre-commit>=4.5.1",
-    "pytest",
-    "ruff>=0.8.0",
-    "ty>=0.0.7",
-]
-
-[tool.ruff]
-exclude = [
-    ".git",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-    "demos",
-    "riichienv-ml",
-    "riichienv-ml-xt",
-    "tools",
-]
-
-line-length = 120
-target-version = "py310"
-extend-exclude = ["trunk", "scripts"]
-
-[tool.ruff.lint]
-fixable = ["ALL"]
-unfixable = []
-select = [
-    "A",  # flake8-builtin
-    "B",  # flake8-bugbear
-    "E",  # pycodestyle error
-    "F",  # Pyflakes
-    "I",  # isort
-    "N",  # pep8-naming
-    "W",  # pycodestyle warning
-    "PL", # Pylint
-    "UP", # pyupgrade
-]
-ignore = [
-    "B905",    # Zip-without-explicit-strict
-    "F403",    # Unable to detect undefined names
-    "N812",    # Lowercase imported as non-lowercase
-    "N999",    # Invalid module name
-    "PLR0912", # Too many branches
-    "PLR0913", # Too many arguments in function definition
-    "PLR2004", # Magic value used in comparison
-]
-
-[tool.ruff.format]
-quote-style = "double"
-line-ending = "auto"
-
-[project.scripts]
-test = "pytest:console_main"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-norecursedirs = ["trunk"]
-
-[tool.ty.src]
-exclude = ["scripts", "tests", "demos", "riichienv-ml"]
-
-[tool.importlinter]
-root_packages = ["riichienv"]
-
-[tool.uv.workspace]
-members = [
-    "riichienv-ml",
-]
-
-[tool.ty.environment]
-python = "./.venv"
-root = ["./src", "."]
+[tool.setuptools.packages.find]
+where = ["riichienv-ml/src"]

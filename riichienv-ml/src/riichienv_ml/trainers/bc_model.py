@@ -179,7 +179,7 @@ class BCModelTrainer:
         runtime_env = {
             "working_dir": src_dir,
             "excludes": [".git", ".venv", "wandb", "__pycache__",
-                         "pyproject.toml", "uv.lock"],
+                         "pyproject.toml"],
             "env_vars": {
                 "PYTHONPATH": python_path,
                 "PATH": os.environ["PATH"],

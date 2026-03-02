@@ -1,10 +1,12 @@
 import os
+import platform
 import subprocess
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import torch
 import wandb
 from loguru import logger
 
@@ -97,7 +99,7 @@ def init_wandb(
     if wandb_dir:
         Path(wandb_dir).mkdir(parents=True, exist_ok=True)
 
-    run = wandb.init(
+    init_kwargs = dict(
         entity=cfg.wandb_entity,
         project=cfg.wandb_project,
         tags=cfg.wandb_tags or None,
@@ -106,6 +108,11 @@ def init_wandb(
         save_code=True,
         dir=wandb_dir,
     )
+    try:
+        run = wandb.init(**init_kwargs)
+    except wandb.errors.CommError as e:
+        logger.warning(f"W&B online init failed ({e}). Falling back to offline mode.")
+        run = wandb.init(**init_kwargs, mode="offline")
 
     # Upload config YAML as artifact
     if config_path and os.path.isfile(config_path):
@@ -138,6 +145,51 @@ def init_wandb(
         f"commit={git.get('git_commit', 'N/A')[:8]} dirty={git.get('git_dirty', 'N/A')}"
     )
     return run
+
+
+def resolve_train_device(requested: str | None) -> str:
+    """Resolve torch training device with macOS-aware fallback.
+
+    Priority:
+    - requested == cuda* and CUDA available -> cuda*
+    - requested == mps and MPS available -> mps
+    - requested == cpu -> cpu
+    - otherwise:
+      - on macOS with MPS -> mps
+      - else -> cpu
+    """
+    req = (requested or "cuda").lower()
+
+    if req.startswith("cuda"):
+        if torch.cuda.is_available():
+            return req
+        if platform.system() == "Darwin" and torch.backends.mps.is_available():
+            logger.warning("CUDA is unavailable. Falling back to MPS on macOS.")
+            return "mps"
+        logger.warning("CUDA is unavailable. Falling back to CPU.")
+        return "cpu"
+
+    if req == "mps":
+        if platform.system() == "Darwin" and torch.backends.mps.is_available():
+            return "mps"
+        logger.warning("MPS is unavailable. Falling back to CPU.")
+        return "cpu"
+
+    if req == "cpu":
+        return "cpu"
+
+    return req
+
+
+def resolve_worker_device(requested: str | None) -> str:
+    """Resolve Ray worker device (cpu/cuda only)."""
+    req = (requested or "cpu").lower()
+    if req == "cuda":
+        if torch.cuda.is_available():
+            return "cuda"
+        logger.warning("worker_device=cuda but CUDA is unavailable. Falling back to CPU workers.")
+        return "cpu"
+    return "cpu"
 
 
 class AverageMeter(object):

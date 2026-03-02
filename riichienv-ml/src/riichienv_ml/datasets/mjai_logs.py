@@ -8,6 +8,19 @@ from torch.utils.data import IterableDataset
 from riichienv import MjaiReplay
 
 
+def load_mjai_replay(file_path: str, replay_rule: str):
+    """Load replay with compatibility across riichienv versions.
+
+    Newer versions accept ``rule=...`` while older ones do not.
+    """
+    try:
+        return MjaiReplay.from_jsonl(file_path, rule=replay_rule)
+    except TypeError as e:
+        if "unexpected keyword argument 'rule'" in str(e):
+            return MjaiReplay.from_jsonl(file_path)
+        raise
+
+
 def _compute_rank(end_scores: list, player_id: int, n_players: int) -> int:
     """Compute rank (0=1st, n-1=last) from end-of-kyoku scores."""
     scores = np.array(end_scores[:n_players], dtype=np.float64)
@@ -73,7 +86,7 @@ class MCDataset(BaseDataset):
             files = files[worker_info.id::worker_info.num_workers]
 
         for file_path in files:
-            replay = MjaiReplay.from_jsonl(file_path, rule=self.replay_rule)
+            replay = load_mjai_replay(file_path, self.replay_rule)
             buffer = []
 
             try:

@@ -2,8 +2,8 @@ bc:
   game:
     n_players: 4
   online: true
-  grp_model: /data/workspace/riichienv-ml/4p/grp_model.pth
-  output: /data/workspace/riichienv-ml/4p/bc_model_seq.pth
+  grp_model: artifacts/4p/grp_model.pth
+  output: artifacts/4p/bc_model_seq.pth
   device: cuda
   batch_size: 128
   lr: 1e-4
@@ -12,12 +12,12 @@ bc:
   pts_weight: [6.0, 4.0, 2.0, 0.0]
   weight_decay: 0.1
   value_coef: 0.5
-  wandb_entity: smly
-  wandb_project: riichienv-4p
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
   wandb_tags: [online, bc_model, transformer]
   # Online teacher settings
   teacher_model_name: kanachan
-  teacher_model_path: /data/workspace/best_model/best.pth
+  teacher_model_path: artifacts/teacher/best_model.pth
   num_ray_workers: 4
   num_envs_per_worker: 16
   num_steps: 500
@@ -25,7 +25,7 @@ bc:
   model_class: riichienv_ml.models.transformer.TransformerActorCritic
   encoder_class: riichienv_ml.features.sequence_features.SequenceFeaturePackedEncoder
   evaluator:
-    model_path: /data/workspace/best_model/best.pth
+    model_path: artifacts/teacher/best_model.pth
     eval_episodes: 48
     eval_interval: 50
     eval_device: cuda

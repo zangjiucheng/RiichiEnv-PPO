@@ -5,9 +5,7 @@ import numpy as np
 import torch
 from torch.utils.data import IterableDataset
 
-from riichienv import MjaiReplay
-
-from riichienv_ml.datasets.mjai_logs import GrpFeatureEncoder, _compute_rank
+from riichienv_ml.datasets.mjai_logs import GrpFeatureEncoder, _compute_rank, load_mjai_replay
 
 
 class GrpReplayDataset(IterableDataset):
@@ -75,7 +73,7 @@ class GrpReplayDataset(IterableDataset):
         buffer = []
         for file_path in files:
             try:
-                replay = MjaiReplay.from_jsonl(file_path, rule=self.replay_rule)
+                replay = load_mjai_replay(file_path, self.replay_rule)
                 # Collect all kyoku features first to get final hanchan scores
                 kyoku_features_list = []
                 for kyoku in replay.take_kyokus():

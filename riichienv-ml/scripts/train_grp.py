@@ -1,13 +1,13 @@
 """Train Global Reward Predictor (GRP).
 
 Usage:
-    uv run python scripts/train_grp.py -c src/riichienv_ml/configs/4p/grp.yml
+    python scripts/train_grp.py -c src/riichienv_ml/configs/4p/grp.yml
 """
 import argparse
 from pathlib import Path
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging, init_wandb
+from riichienv_ml.utils import setup_logging, init_wandb, resolve_train_device
 from riichienv_ml.trainers.grp import Trainer
 
 
@@ -43,6 +43,7 @@ def main():
         overrides["output"] = args.output
     if overrides:
         cfg = cfg.model_copy(update=overrides)
+    cfg = cfg.model_copy(update={"device": resolve_train_device(cfg.device)})
 
     log_dir = str(Path(cfg.output).parent)
     setup_logging(log_dir, "train_grp")

@@ -33,6 +33,8 @@ class Trainer:
     ):
         self.device_str = device_str
         self.device = torch.device(device_str)
+        self.data_glob = data_glob
+        self.val_data_glob = val_data_glob
         self.lr = lr
         self.lr_eta_min = lr_eta_min
         self.batch_size = batch_size
@@ -77,6 +79,10 @@ class Trainer:
     def train(self, output_path: str, n_epochs: int = 10) -> None:
         if not hasattr(self, "train_dataloader"):
             raise ValueError("data_glob is required for training (got empty string)")
+        if self.n_train_files == 0:
+            raise FileNotFoundError(
+                f"No training files matched data_glob: {self.data_glob}"
+            )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         model = RankPredictor(input_dim=self.input_dim, n_players=self.n_players).to(self.device)
         optimizer = optim.Adam(model.parameters(), lr=self.lr)

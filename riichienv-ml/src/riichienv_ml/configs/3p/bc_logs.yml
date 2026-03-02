@@ -1,9 +1,9 @@
 bc:
   game:
     n_players: 3
-  data_glob: "/data/mjsoul/mjsoul-3p/**/*.jsonl.gz"
-  val_data_glob: "/data/mjsoul/mjsoul-3p/2024/01/**/*.jsonl.gz"
-  output: /data/workspace/riichienv-ml/3p/bc_model.pth
+  data_glob: "data/mjsoul/mjsoul-3p/train/**/*.jsonl.gz"
+  val_data_glob: "data/mjsoul/mjsoul-3p/val/**/*.jsonl.gz"
+  output: artifacts/3p/bc_model.pth
   device: cuda
   batch_size: 128
   lr: 5e-4
@@ -15,8 +15,8 @@ bc:
   pts_weight: [4.0, 2.0, 0.0]
   weight_decay: 0.1
   aux_weight: 0.2
-  wandb_entity: smly
-  wandb_project: riichienv-3p
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
   wandb_tags: [offline, bc]
   model_class: riichienv_ml.models.q_network.QNetwork
   dataset_class: riichienv_ml.datasets.mjai_logs.MCDataset

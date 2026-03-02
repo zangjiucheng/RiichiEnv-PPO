@@ -5,8 +5,8 @@ Supports two algorithms:
   - ppo: PPO (actor-critic, on-policy)
 
 Usage:
-    uv run python scripts/train_ppo.py -c src/riichienv_ml/configs/4p/ppo.yml
-    uv run python scripts/train_ppo.py -c src/riichienv_ml/configs/4p/ppo.yml --algorithm ppo
+    python scripts/train_ppo.py -c src/riichienv_ml/configs/4p/ppo.yml
+    python scripts/train_ppo.py -c src/riichienv_ml/configs/4p/ppo.yml --algorithm ppo
 """
 import argparse
 
@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging, init_wandb
+from riichienv_ml.utils import setup_logging, init_wandb, resolve_train_device, resolve_worker_device
 
 
 def parse_args() -> argparse.Namespace:
@@ -87,6 +87,12 @@ def main():
             model_overrides[field] = val
     if model_overrides:
         cfg = cfg.model_copy(update={"model": cfg.model.model_copy(update=model_overrides)})
+    cfg = cfg.model_copy(
+        update={
+            "device": resolve_train_device(cfg.device),
+            "worker_device": resolve_worker_device(cfg.worker_device),
+        }
+    )
 
     setup_logging(cfg.checkpoint_dir, "train_ppo")
     init_wandb(cfg, config_path=args.config)

@@ -80,7 +80,7 @@ def run_ppo_training(cfg):
 
     runtime_env = {
         "working_dir": src_dir,
-        "excludes": [".git", ".venv", "wandb", "__pycache__", "pyproject.toml", "uv.lock"],
+        "excludes": [".git", ".venv", "wandb", "__pycache__", "pyproject.toml"],
         "env_vars": {
             "PYTHONPATH": python_path,
             "PATH": os.environ["PATH"]

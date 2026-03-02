@@ -1,9 +1,9 @@
 cql:
   game:
     n_players: 4
-  data_glob: /data/mjsoul/mjsoul-4p/**/*.jsonl.gz
-  grp_model: /data/workspace/riichienv-ml/4p/grp_model.pth
-  output: /data/workspace/riichienv-ml/4p/cql_model.pth
+  data_glob: data/mjsoul/mjsoul-4p/train/**/*.jsonl.gz
+  grp_model: artifacts/4p/grp_model.pth
+  output: artifacts/4p/cql_model.pth
   device: cuda
   batch_size: 128
   lr: 5e-4
@@ -15,14 +15,14 @@ cql:
   pts_weight: [6.0, 4.0, 2.0, 0.0]
   weight_decay: 0.1
   aux_weight: 0.2
-  wandb_entity: smly
-  wandb_project: riichienv-4p
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
   wandb_tags: [offline, cql]
   model_class: riichienv_ml.models.q_network.QNetwork
   dataset_class: riichienv_ml.datasets.mjai_logs.MCDataset
   encoder_class: riichienv_ml.features.feat_v1.ObservationEncoder
   evaluator:
-    model_path: /data/workspace/best_model/best.pth
+    model_path: artifacts/teacher/best_model.pth
     eval_episodes: 48
     eval_interval: 100000
     eval_device: cuda

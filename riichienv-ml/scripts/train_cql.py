@@ -1,8 +1,8 @@
 """Train Offline CQL model.
 
 Usage:
-    uv run python scripts/train_cql.py -c src/riichienv_ml/configs/4p/cql.yml
-    uv run python scripts/train_cql.py -c src/riichienv_ml/configs/3p/cql.yml
+    python scripts/train_cql.py -c src/riichienv_ml/configs/4p/cql.yml
+    python scripts/train_cql.py -c src/riichienv_ml/configs/3p/cql.yml
 """
 import argparse
 from pathlib import Path
@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging, init_wandb
+from riichienv_ml.utils import setup_logging, init_wandb, resolve_train_device
 from riichienv_ml.trainers.bc_logs import Trainer
 
 
@@ -57,6 +57,7 @@ def main():
             model_overrides[field] = val
     if model_overrides:
         cfg = cfg.model_copy(update={"model": cfg.model.model_copy(update=model_overrides)})
+    cfg = cfg.model_copy(update={"device": resolve_train_device(cfg.device)})
 
     log_dir = str(Path(cfg.output).parent)
     setup_logging(log_dir, "train_cql")

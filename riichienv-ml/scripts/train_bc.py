@@ -4,8 +4,8 @@ Supports standard BC (bc_logs) and ActorCriticNetwork BC (bc_model) via config.
 Auto-detects mode from config's `online` flag.
 
 Usage:
-    uv run python scripts/train_bc.py -c src/riichienv_ml/configs/4p/bc_logs.yml
-    uv run python scripts/train_bc.py -c src/riichienv_ml/configs/4p/bc_model.yml
+    python scripts/train_bc.py -c src/riichienv_ml/configs/4p/bc_logs.yml
+    python scripts/train_bc.py -c src/riichienv_ml/configs/4p/bc_model.yml
 """
 import argparse
 from pathlib import Path
@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging, init_wandb
+from riichienv_ml.utils import setup_logging, init_wandb, resolve_train_device, resolve_worker_device
 from riichienv_ml.trainers.bc_logs import Trainer
 
 
@@ -60,6 +60,9 @@ def main():
             model_overrides[field] = val
     if model_overrides:
         cfg = cfg.model_copy(update={"model": cfg.model.model_copy(update=model_overrides)})
+    cfg = cfg.model_copy(update={"device": resolve_train_device(cfg.device)})
+    if cfg.online:
+        cfg = cfg.model_copy(update={"worker_device": resolve_worker_device(cfg.worker_device)})
 
     log_dir = str(Path(cfg.output).parent)
     setup_logging(log_dir, "train_bc")

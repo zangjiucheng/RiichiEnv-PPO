@@ -1,16 +1,16 @@
 grp:
   game:
     n_players: 3
-  data_glob: "/data/mjsoul/mjsoul-3p/**/*.jsonl.gz"
-  val_data_glob: "/data/mjsoul/mjsoul-3p/2024/01/**/*.jsonl.gz"
-  output: /data/workspace/riichienv-ml/3p/grp_model.pth
+  data_glob: "data/mjsoul/mjsoul-3p/train/**/*.jsonl.gz"
+  val_data_glob: "data/mjsoul/mjsoul-3p/val/**/*.jsonl.gz"
+  output: artifacts/3p/grp_model.pth
   device: cuda
   batch_size: 512
-  num_workers: 32
+  num_workers: 8
   num_epochs: 1
   lr: 5e-4
   lr_eta_min: 1e-7
   samples_per_file: 30
-  wandb_entity: smly
-  wandb_project: riichienv-3p
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
   wandb_tags: [grp]
