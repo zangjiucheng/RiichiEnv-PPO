@@ -27,6 +27,7 @@ class RewardPredictor:
     def __init__(self, model_path: str, pts_weight: list[float],
                  n_players: int = 4, input_dim: int | None = None,
                  device: str = "cuda"):
+        self.model_path: str = model_path
         self.device: str = device
         self.n_players: int = n_players
         self.pts_weight: list[float] = pts_weight

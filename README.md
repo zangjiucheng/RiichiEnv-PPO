@@ -44,6 +44,14 @@ Optional (disable W&B cloud sync):
 export WANDB_MODE=offline
 ```
 
+Optional (dataset cache for BC/CQL):
+
+```sh
+export RIICHIENV_ML_ENABLE_CACHE=1
+export RIICHIENV_ML_CACHE_DIR=artifacts/cache/mc
+export RIICHIENV_ML_CACHE_DTYPE=float16
+```
+
 ## Stage 0.5: Import Downloaded `.zip` Data
 
 Convert zip files containing `.mjson` into local `train/val` `.jsonl.gz` files:
@@ -81,6 +89,7 @@ python riichienv-ml/scripts/train_grp.py -c riichienv-ml/src/riichienv_ml/config
 ### Option A: CQL
 
 This trains `artifacts/{3p|4p}/cql_model.pth` and uses GRP from Stage 1.
+On first run, replay features are cached to `artifacts/cache/mc`; later runs reuse cache.
 
 ```sh
 # 4-player
