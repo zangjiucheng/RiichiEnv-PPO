@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import os
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 
@@ -129,8 +130,14 @@ def main() -> None:
 
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 raw = zf.read(info)
-                with gzip.open(out_path, "wb") as f:
-                    f.write(raw)
+                tmp_path = out_path.parent / f".{out_path.name}.tmp.{os.getpid()}"
+                try:
+                    with gzip.open(tmp_path, "wb") as f:
+                        f.write(raw)
+                    os.replace(tmp_path, out_path)
+                finally:
+                    if tmp_path.exists():
+                        tmp_path.unlink()
                 written += 1
 
         total_seen += seen

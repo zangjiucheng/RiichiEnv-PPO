@@ -86,10 +86,10 @@ class MCDataset(BaseDataset):
             files = files[worker_info.id::worker_info.num_workers]
 
         for file_path in files:
-            replay = load_mjai_replay(file_path, self.replay_rule)
             buffer = []
 
             try:
+                replay = load_mjai_replay(file_path, self.replay_rule)
                 for kyoku in replay.take_kyokus():
                     grp_features = GrpFeatureEncoder(kyoku, self.n_players).encode()
 
@@ -117,9 +117,10 @@ class MCDataset(BaseDataset):
                         for t, (feat, act, mask) in enumerate(trajectory):
                             decayed = final_reward * (self.gamma ** (T - t - 1))
                             buffer.append((feat, act, decayed, mask, rank))
-            except RuntimeError as e:
-                print(f"Error processing replay: {file_path}")
-                raise e
+            except Exception as e:
+                # Skip malformed or corrupted replay files (e.g., broken gzip stream).
+                print(f"Error processing replay: {file_path}: {e}")
+                continue
 
             if self.is_train:
                 random.shuffle(buffer)
