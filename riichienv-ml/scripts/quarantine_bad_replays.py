@@ -3,7 +3,8 @@
 Example:
   python riichienv-ml/scripts/quarantine_bad_replays.py \
     --glob "data/mjsoul/mjsoul-4p/train/**/*.jsonl" \
-    --players 4
+    --players 4 \
+    --mode steps
 """
 
 from __future__ import annotations
@@ -29,7 +30,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--glob", required=True, help="Replay glob, e.g. data/mjsoul/mjsoul-4p/train/**/*.jsonl")
     parser.add_argument("--players", type=int, choices=[3, 4], default=4, help="Number of players")
     parser.add_argument("--rule", type=str, default="mjsoul", help="Replay rule hint")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["steps", "parse"],
+        default="steps",
+        help=(
+            "Validation depth: "
+            "'steps' matches training path (kyoku.steps + action/mask), "
+            "'parse' only checks take_kyokus()"
+        ),
+    )
     return parser.parse_args()
+
+
+def _exercise_steps(replay, n_players: int) -> None:
+    """Run the same replay path used by training data pipelines."""
+    for kyoku in replay.take_kyokus():
+        for player_id in range(n_players):
+            for obs, action in kyoku.steps(player_id):
+                _ = action.encode()
+                _ = obs.mask()
 
 
 def main() -> None:
@@ -60,8 +81,12 @@ def main() -> None:
             continue
         try:
             replay = load_mjai_replay(file_path, args.rule, n_players=args.players)
-            # Force parse to catch desync.
-            list(replay.take_kyokus())
+            if args.mode == "parse":
+                # Shallow parse: only validates kyoku extraction.
+                list(replay.take_kyokus())
+            else:
+                # Deep validation: matches training code path.
+                _exercise_steps(replay, args.players)
             ok += 1
         except Exception as e:  # noqa: BLE001
             if _is_replay_desync_error(e):
@@ -81,4 +106,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
