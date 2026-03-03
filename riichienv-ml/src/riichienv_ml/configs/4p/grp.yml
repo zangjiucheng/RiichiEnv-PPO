@@ -6,7 +6,7 @@ grp:
   output: artifacts/4p/grp_model.pth
   device: cuda
   batch_size: 1024
-  num_workers: 48
+  num_workers: 20
   num_epochs: 1
   lr: 5e-4
   lr_eta_min: 1e-7

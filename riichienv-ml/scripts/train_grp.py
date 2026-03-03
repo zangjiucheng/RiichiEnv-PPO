@@ -7,7 +7,12 @@ import argparse
 from pathlib import Path
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging, init_wandb, resolve_train_device
+from riichienv_ml.utils import (
+    setup_logging,
+    init_wandb,
+    resolve_train_device,
+    resolve_dataloader_workers,
+)
 from riichienv_ml.trainers.grp import Trainer
 
 
@@ -43,7 +48,10 @@ def main():
         overrides["output"] = args.output
     if overrides:
         cfg = cfg.model_copy(update=overrides)
-    cfg = cfg.model_copy(update={"device": resolve_train_device(cfg.device)})
+    cfg = cfg.model_copy(update={
+        "device": resolve_train_device(cfg.device),
+        "num_workers": resolve_dataloader_workers(cfg.num_workers),
+    })
 
     log_dir = str(Path(cfg.output).parent)
     setup_logging(log_dir, "train_grp")

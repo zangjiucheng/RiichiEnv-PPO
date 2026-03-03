@@ -192,6 +192,35 @@ def resolve_worker_device(requested: str | None) -> str:
     return "cpu"
 
 
+def suggested_max_dataloader_workers() -> int:
+    """Best-effort estimate for DataLoader worker upper bound."""
+    try:
+        if hasattr(os, "sched_getaffinity"):
+            return max(1, len(os.sched_getaffinity(0)))
+    except Exception:
+        pass
+    return max(1, os.cpu_count() or 1)
+
+
+def resolve_dataloader_workers(requested: int | None) -> int:
+    """Clamp DataLoader workers to a system-suggested safe range."""
+    if requested is None:
+        return 0
+    workers = max(0, int(requested))
+    if workers == 0:
+        return 0
+    max_workers = suggested_max_dataloader_workers()
+    if workers > max_workers:
+        logger.warning(
+            "num_workers={} exceeds suggested max={}. Capping to {}.",
+            workers,
+            max_workers,
+            max_workers,
+        )
+        return max_workers
+    return workers
+
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self, name, fmt=':f'):

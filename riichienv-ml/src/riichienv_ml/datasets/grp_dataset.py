@@ -82,7 +82,7 @@ class GrpReplayDataset(IterableDataset):
         buffer = []
         for file_path in files:
             try:
-                replay = load_mjai_replay(file_path, self.replay_rule)
+                replay = load_mjai_replay(file_path, self.replay_rule, n_players=self.n_players)
                 # Collect all kyoku features first to get final hanchan scores
                 kyoku_features_list = []
                 for kyoku in replay.take_kyokus():

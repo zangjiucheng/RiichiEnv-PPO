@@ -143,14 +143,17 @@ class Trainer:
             n_players=self.n_players, replay_rule=self.replay_rule,
             encoder=encoder,
         )
-        dataloader = DataLoader(
-            dataset,
+        dataloader_kwargs = dict(
+            dataset=dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True,
-            prefetch_factor=4,
-            persistent_workers=True,
         )
+        if self.num_workers > 0:
+            dataloader_kwargs["prefetch_factor"] = 2
+            # Python 3.13 + many workers may leak semaphore warnings on shutdown.
+            dataloader_kwargs["persistent_workers"] = False
+        dataloader = DataLoader(**dataloader_kwargs)
 
         ModelClass = import_class(self.model_class)
         model = ModelClass(**self.model_config).to(self.device)

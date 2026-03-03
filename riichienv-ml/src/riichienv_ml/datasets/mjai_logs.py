@@ -12,17 +12,77 @@ from torch.utils.data import IterableDataset
 from riichienv import MjaiReplay
 
 
-def load_mjai_replay(file_path: str, replay_rule: str):
-    """Load replay with compatibility across riichienv versions.
+class _ParsedReplay:
+    """Lightweight replay wrapper backed by pre-parsed kyokus."""
 
-    Newer versions accept ``rule=...`` while older ones do not.
-    """
+    def __init__(self, kyokus):
+        self._kyokus = kyokus
+
+    def take_kyokus(self):
+        return iter(self._kyokus)
+
+
+def _load_replay_with_rule(file_path: str, replay_rule: str | None):
+    """Load replay with optional rule and compatibility across versions."""
+    if replay_rule is None:
+        return MjaiReplay.from_jsonl(file_path)
     try:
         return MjaiReplay.from_jsonl(file_path, rule=replay_rule)
     except TypeError as e:
         if "unexpected keyword argument 'rule'" in str(e):
             return MjaiReplay.from_jsonl(file_path)
         raise
+
+
+def _is_replay_desync_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return "Replay desync" in msg or "Invalid state" in msg
+
+
+def _candidate_rules(replay_rule: str, n_players: int) -> list[str | None]:
+    candidates: list[str | None] = [replay_rule, None]
+    # Fallback to generic MJAI parsers when strict mjsoul parser desyncs.
+    if replay_rule in ("mjsoul", "mjsoul_sanma"):
+        candidates.append("mjai")
+        if n_players == 3:
+            candidates.append("mjai_sanma")
+    # de-duplicate while preserving order
+    deduped: list[str | None] = []
+    seen = set()
+    for c in candidates:
+        if c in seen:
+            continue
+        seen.add(c)
+        deduped.append(c)
+    return deduped
+
+
+def load_mjai_replay(file_path: str, replay_rule: str, n_players: int = 4):
+    """Load replay with rule fallback for desync-prone files.
+
+    Some converted datasets are valid MJAI but can desync under strict
+    ``mjsoul`` replay parsing. For those files, retry with generic MJAI rules.
+    """
+    last_exc: Exception | None = None
+    for rule in _candidate_rules(replay_rule, n_players):
+        try:
+            replay = _load_replay_with_rule(file_path, rule)
+            # Force parse now so desync exceptions are caught in this function.
+            kyokus = list(replay.take_kyokus())
+            return _ParsedReplay(kyokus)
+        except Exception as e:  # noqa: BLE001
+            last_exc = e
+            # Only continue trying alternative rules for parser/desync issues.
+            if _is_replay_desync_error(e):
+                continue
+            # Unknown rule names should also allow fallback.
+            if "unknown rule" in str(e).lower() or "invalid rule" in str(e).lower():
+                continue
+            # For non-parser errors (file I/O/utf8/etc), fail fast.
+            break
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"Failed to load replay: {file_path}")
 
 
 def _compute_rank(end_scores: list, player_id: int, n_players: int) -> int:
@@ -159,7 +219,7 @@ class MCDataset(BaseDataset):
                 yield feat, int(actions[i]), float(targets[i]), masks[i], int(ranks[i])
 
     def _build_samples_from_replay(self, file_path: str) -> list[tuple]:
-        replay = load_mjai_replay(file_path, self.replay_rule)
+        replay = load_mjai_replay(file_path, self.replay_rule, n_players=self.n_players)
         samples = []
 
         for kyoku in replay.take_kyokus():

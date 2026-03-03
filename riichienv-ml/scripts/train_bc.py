@@ -16,7 +16,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from riichienv_ml.config import load_config
-from riichienv_ml.utils import setup_logging, init_wandb, resolve_train_device, resolve_worker_device
+from riichienv_ml.utils import (
+    setup_logging,
+    init_wandb,
+    resolve_train_device,
+    resolve_worker_device,
+    resolve_dataloader_workers,
+)
 from riichienv_ml.trainers.bc_logs import Trainer
 
 
@@ -60,7 +66,10 @@ def main():
             model_overrides[field] = val
     if model_overrides:
         cfg = cfg.model_copy(update={"model": cfg.model.model_copy(update=model_overrides)})
-    cfg = cfg.model_copy(update={"device": resolve_train_device(cfg.device)})
+    cfg = cfg.model_copy(update={
+        "device": resolve_train_device(cfg.device),
+        "num_workers": resolve_dataloader_workers(cfg.num_workers),
+    })
     if cfg.online:
         cfg = cfg.model_copy(update={"worker_device": resolve_worker_device(cfg.worker_device)})
 
