@@ -50,6 +50,17 @@ Optional (dataset cache for BC/CQL):
 export RIICHIENV_ML_ENABLE_CACHE=1
 export RIICHIENV_ML_CACHE_DIR=artifacts/cache/mc
 export RIICHIENV_ML_CACHE_DTYPE=float16
+export RIICHIENV_ML_QUARANTINE_BAD_REPLAYS=1
+export RIICHIENV_ML_BAD_REPLAY_DIR=artifacts/cache/bad_replays
+export RIICHIENV_ML_MAX_ERROR_LOGS=1
+```
+
+Optional (some clusters with cuDNN v8 symbol mismatch):
+
+```sh
+export RIICHIENV_DISABLE_CUDNN_V8=1
+# If it still crashes, disable cuDNN entirely (slower but stable):
+export RIICHIENV_DISABLE_CUDNN=1
 ```
 
 ## Stage 0.5: Import Downloaded `.zip` Data
@@ -83,6 +94,15 @@ python riichienv-ml/scripts/import_mjai_zip.py \
   ./.cache/riichi-data/2023.zip \
   ./.cache/riichi-data/2024.zip \
   ./.cache/riichi-data/2025.zip
+```
+
+If training logs contain many `Replay desync` errors, quarantine bad files first:
+
+```sh
+python riichienv-ml/scripts/quarantine_bad_replays.py \
+  --glob "data/mjsoul/mjsoul-4p/train/**/*.jsonl" \
+  --players 4 \
+  --rule mjsoul
 ```
 
 ## Stage 1: Train GRP (Reward Model)

@@ -74,9 +74,9 @@ class GrpReplayDataset(IterableDataset):
             worker_label = str(worker_info.id)
 
         try:
-            max_error_logs = int(os.getenv("RIICHIENV_ML_MAX_ERROR_LOGS", "20"))
+            max_error_logs = int(os.getenv("RIICHIENV_ML_MAX_ERROR_LOGS", "1"))
         except ValueError:
-            max_error_logs = 20
+            max_error_logs = 1
         error_count = 0
 
         buffer = []

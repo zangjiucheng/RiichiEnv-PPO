@@ -9,6 +9,15 @@ Usage:
     python scripts/train_ppo.py -c src/riichienv_ml/configs/4p/ppo.yml --algorithm ppo
 """
 import argparse
+import os
+
+if os.getenv("RIICHIENV_DISABLE_CUDNN_V8", "1").lower() not in ("0", "false", "no"):
+    os.environ.setdefault("TORCH_CUDNN_V8_API_DISABLED", "1")
+
+import torch
+
+if os.getenv("RIICHIENV_DISABLE_CUDNN", "0").lower() not in ("0", "false", "no"):
+    torch.backends.cudnn.enabled = False
 
 from dotenv import load_dotenv
 load_dotenv()

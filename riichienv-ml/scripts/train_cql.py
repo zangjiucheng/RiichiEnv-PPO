@@ -5,9 +5,17 @@ Usage:
     python scripts/train_cql.py -c src/riichienv_ml/configs/3p/cql.yml
 """
 import argparse
+import os
 from pathlib import Path
 
+if os.getenv("RIICHIENV_DISABLE_CUDNN_V8", "1").lower() not in ("0", "false", "no"):
+    os.environ.setdefault("TORCH_CUDNN_V8_API_DISABLED", "1")
+
 import torch.multiprocessing
+import torch
+
+if os.getenv("RIICHIENV_DISABLE_CUDNN", "0").lower() not in ("0", "false", "no"):
+    torch.backends.cudnn.enabled = False
 
 from dotenv import load_dotenv
 load_dotenv()

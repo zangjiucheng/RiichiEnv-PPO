@@ -148,6 +148,9 @@ class MCDataset(BaseDataset):
         self.cache_dtype = os.getenv("RIICHIENV_ML_CACHE_DTYPE", "float16").lower()
         if self.cache_dtype not in ("float16", "float32"):
             self.cache_dtype = "float16"
+        bad_dir = os.getenv("RIICHIENV_ML_BAD_REPLAY_DIR", "artifacts/cache/bad_replays")
+        self.bad_replay_dir = Path(bad_dir)
+        self.quarantine_bad = os.getenv("RIICHIENV_ML_QUARANTINE_BAD_REPLAYS", "1").lower() not in ("0", "false", "no")
 
     def _cache_key(self, file_path: str) -> str:
         stat = os.stat(file_path)
@@ -183,6 +186,46 @@ class MCDataset(BaseDataset):
     def _cache_path(self, file_path: str) -> Path:
         digest = self._cache_key(file_path)
         return self.cache_dir / f"{digest}.npz"
+
+    def _bad_replay_key(self, file_path: str) -> str:
+        stat = os.stat(file_path)
+        payload = {
+            "file_path": str(file_path),
+            "file_mtime_ns": stat.st_mtime_ns,
+            "file_size": stat.st_size,
+            "n_players": int(self.n_players),
+            "replay_rule": str(self.replay_rule),
+        }
+        return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+    def _bad_replay_path(self, file_path: str) -> Path:
+        return self.bad_replay_dir / f"{self._bad_replay_key(file_path)}.json"
+
+    def _is_known_bad_replay(self, file_path: str) -> bool:
+        if not self.quarantine_bad:
+            return False
+        try:
+            return self._bad_replay_path(file_path).exists()
+        except OSError:
+            return False
+
+    def _mark_bad_replay(self, file_path: str, err: Exception) -> None:
+        if not self.quarantine_bad:
+            return
+        try:
+            self.bad_replay_dir.mkdir(parents=True, exist_ok=True)
+            out_path = self._bad_replay_path(file_path)
+            tmp_path = out_path.with_name(f".{out_path.name}.tmp.{os.getpid()}")
+            record = {
+                "file_path": str(file_path),
+                "replay_rule": self.replay_rule,
+                "n_players": self.n_players,
+                "error": str(err),
+            }
+            tmp_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+            os.replace(tmp_path, out_path)
+        except OSError:
+            return
 
     def _write_cache(self, cache_path: Path, samples: list[tuple]) -> None:
         if not samples:
@@ -263,12 +306,14 @@ class MCDataset(BaseDataset):
             worker_label = str(worker_info.id)
 
         try:
-            max_error_logs = int(os.getenv("RIICHIENV_ML_MAX_ERROR_LOGS", "20"))
+            max_error_logs = int(os.getenv("RIICHIENV_ML_MAX_ERROR_LOGS", "1"))
         except ValueError:
-            max_error_logs = 20
+            max_error_logs = 1
         error_count = 0
 
         for file_path in files:
+            if self._is_known_bad_replay(file_path):
+                continue
             cache_path = self._cache_path(file_path) if self.enable_cache else None
 
             try:
@@ -286,6 +331,8 @@ class MCDataset(BaseDataset):
                 yield from buffer
             except Exception as e:
                 error_count += 1
+                if _is_replay_desync_error(e):
+                    self._mark_bad_replay(file_path, e)
                 # Skip malformed or corrupted replay files.
                 if error_count <= max_error_logs or error_count % 100 == 0:
                     print(
