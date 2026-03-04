@@ -138,7 +138,7 @@ class MCDataset(BaseDataset):
     Target: Monte-Carlo Return (G_t), decayed.
     Uses MjaiReplay.from_jsonl() for replay parsing.
     """
-    CACHE_VERSION = 1
+    CACHE_VERSION = 2
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -151,6 +151,13 @@ class MCDataset(BaseDataset):
         bad_dir = os.getenv("RIICHIENV_ML_BAD_REPLAY_DIR", "artifacts/cache/bad_replays")
         self.bad_replay_dir = Path(bad_dir)
         self.quarantine_bad = os.getenv("RIICHIENV_ML_QUARANTINE_BAD_REPLAYS", "1").lower() not in ("0", "false", "no")
+        # Some MJAI corpora desync only at end-of-kyoku (e.g. zimo/hora mismatch).
+        # Keep partial per-player trajectories instead of dropping the whole replay.
+        self.allow_partial_kyoku = os.getenv("RIICHIENV_ML_ALLOW_PARTIAL_KYOKU", "1").lower() not in ("0", "false", "no")
+        try:
+            self.partial_min_steps = max(1, int(os.getenv("RIICHIENV_ML_PARTIAL_MIN_STEPS", "1")))
+        except ValueError:
+            self.partial_min_steps = 1
 
     def _cache_key(self, file_path: str) -> str:
         stat = os.stat(file_path)
@@ -180,6 +187,8 @@ class MCDataset(BaseDataset):
             "reward_model": rp_model_sig,
             "reward_pts_weight": rp_pts,
             "cache_dtype": self.cache_dtype,
+            "allow_partial_kyoku": bool(self.allow_partial_kyoku),
+            "partial_min_steps": int(self.partial_min_steps),
         }
         return hashlib.sha1(json.dumps(key_payload, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -277,17 +286,23 @@ class MCDataset(BaseDataset):
                 final_reward = all_rewards[player_id]
                 rank = _compute_rank(end_scores, player_id, self.n_players)
 
-                for obs, action in kyoku.steps(player_id):
-                    features = self.encoder.encode(obs)
-                    action_id = action.encode()
+                try:
+                    for obs, action in kyoku.steps(player_id):
+                        features = self.encoder.encode(obs)
+                        action_id = action.encode()
 
-                    mask_bytes = obs.mask()
-                    mask = np.frombuffer(mask_bytes, dtype=np.uint8).copy()
-                    assert 0 <= action_id < mask.shape[0], f"action_id should be in [0, {mask.shape[0]})"
-                    assert mask[action_id] == 1, f"action_id {action_id} should be legal"
-                    trajectory.append((features, action_id, mask))
+                        mask_bytes = obs.mask()
+                        mask = np.frombuffer(mask_bytes, dtype=np.uint8).copy()
+                        assert 0 <= action_id < mask.shape[0], f"action_id should be in [0, {mask.shape[0]})"
+                        assert mask[action_id] == 1, f"action_id {action_id} should be legal"
+                        trajectory.append((features, action_id, mask))
+                except Exception as e:
+                    if not (self.allow_partial_kyoku and _is_replay_desync_error(e)):
+                        raise
 
                 T = len(trajectory)
+                if T < self.partial_min_steps:
+                    continue
                 for t, (feat, act, mask) in enumerate(trajectory):
                     decayed = final_reward * (self.gamma ** (T - t - 1))
                     samples.append((feat, act, decayed, mask, rank))
@@ -322,6 +337,9 @@ class MCDataset(BaseDataset):
                     continue
 
                 buffer = self._build_samples_from_replay(file_path)
+                if not buffer:
+                    self._mark_bad_replay(file_path, RuntimeError("No usable samples extracted"))
+                    continue
                 if self.is_train:
                     random.shuffle(buffer)
 

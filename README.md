@@ -55,12 +55,15 @@ export RIICHIENV_ML_BAD_REPLAY_DIR=artifacts/cache/bad_replays
 export RIICHIENV_ML_MAX_ERROR_LOGS=1
 ```
 
-Optional (some clusters with cuDNN v8 symbol mismatch):
+cuDNN defaults (for cluster stability):
 
 ```sh
+# training scripts now default to these safe settings:
 export RIICHIENV_DISABLE_CUDNN_V8=1
-# If it still crashes, disable cuDNN entirely (slower but stable):
 export RIICHIENV_DISABLE_CUDNN=1
+
+# if your CUDA/cuDNN runtime is clean and you want max speed:
+export RIICHIENV_DISABLE_CUDNN=0
 ```
 
 ## Stage 0.5: Import Downloaded `.zip` Data

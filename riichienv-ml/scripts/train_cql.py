@@ -14,7 +14,7 @@ if os.getenv("RIICHIENV_DISABLE_CUDNN_V8", "1").lower() not in ("0", "false", "n
 import torch.multiprocessing
 import torch
 
-if os.getenv("RIICHIENV_DISABLE_CUDNN", "0").lower() not in ("0", "false", "no"):
+if os.getenv("RIICHIENV_DISABLE_CUDNN", "1").lower() not in ("0", "false", "no"):
     torch.backends.cudnn.enabled = False
 
 from dotenv import load_dotenv
