@@ -1,5 +1,6 @@
 import random
 import time
+from pathlib import Path
 
 import ray
 import torch
@@ -58,8 +59,13 @@ class PPOWorker:
 
         pw = pts_weight or GAME_PARAMS[n_players].get("pts_weight", [10.0, 4.0, -4.0, -10.0])
         if grp_model:
+            grp_model_path = Path(grp_model).expanduser()
+            if not grp_model_path.is_absolute():
+                grp_model_path = (Path.cwd() / grp_model_path).resolve()
+            else:
+                grp_model_path = grp_model_path.resolve()
             self.reward_predictor = RewardPredictor(
-                grp_model, pw, n_players=n_players, device="cpu")
+                str(grp_model_path), pw, n_players=n_players, device="cpu")
         else:
             self.reward_predictor = None
 

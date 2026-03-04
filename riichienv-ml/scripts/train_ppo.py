@@ -10,6 +10,7 @@ Usage:
 """
 import argparse
 import os
+from pathlib import Path
 
 if os.getenv("RIICHIENV_DISABLE_CUDNN_V8", "1").lower() not in ("0", "false", "no"):
     os.environ.setdefault("TORCH_CUDNN_V8_API_DISABLED", "1")
@@ -68,6 +69,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_path(path_str: str) -> str:
+    p = Path(path_str).expanduser()
+    if not p.is_absolute():
+        p = (Path.cwd() / p).resolve()
+    else:
+        p = p.resolve()
+    return str(p)
+
+
 def main():
     args = parse_args()
     cfg = load_config(args.config).ppo
@@ -102,6 +112,24 @@ def main():
             "worker_device": resolve_worker_device(cfg.worker_device),
         }
     )
+    path_updates = {
+        "checkpoint_dir": _resolve_path(cfg.checkpoint_dir),
+    }
+    if cfg.grp_model is not None:
+        path_updates["grp_model"] = _resolve_path(cfg.grp_model)
+    if cfg.load_model is not None:
+        path_updates["load_model"] = _resolve_path(cfg.load_model)
+    if cfg.evaluator.model_path is not None:
+        eval_cfg = cfg.evaluator.model_copy(update={"model_path": _resolve_path(cfg.evaluator.model_path)})
+        path_updates["evaluator"] = eval_cfg
+    cfg = cfg.model_copy(update=path_updates)
+
+    if cfg.grp_model is not None and not Path(cfg.grp_model).is_file():
+        raise FileNotFoundError(f"GRP model not found: {cfg.grp_model}")
+    if cfg.load_model is not None and not Path(cfg.load_model).is_file():
+        raise FileNotFoundError(f"Load model not found: {cfg.load_model}")
+    if cfg.evaluator.model_path is not None and not Path(cfg.evaluator.model_path).is_file():
+        raise FileNotFoundError(f"Evaluator model not found: {cfg.evaluator.model_path}")
 
     setup_logging(cfg.checkpoint_dir, "train_ppo")
     init_wandb(cfg, config_path=args.config)
