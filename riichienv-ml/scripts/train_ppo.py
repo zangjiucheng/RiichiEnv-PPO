@@ -129,7 +129,11 @@ def main():
     if cfg.load_model is not None and not Path(cfg.load_model).is_file():
         raise FileNotFoundError(f"Load model not found: {cfg.load_model}")
     if cfg.evaluator.model_path is not None and not Path(cfg.evaluator.model_path).is_file():
-        raise FileNotFoundError(f"Evaluator model not found: {cfg.evaluator.model_path}")
+        print(
+            f"Evaluator model not found: {cfg.evaluator.model_path}. "
+            "Disabling third-party evaluator for this run."
+        )
+        cfg = cfg.model_copy(update={"evaluator": cfg.evaluator.model_copy(update={"model_path": None})})
 
     setup_logging(cfg.checkpoint_dir, "train_ppo")
     init_wandb(cfg, config_path=args.config)
