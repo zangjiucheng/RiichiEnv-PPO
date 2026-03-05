@@ -9,15 +9,21 @@ Example:
 from __future__ import annotations
 
 import argparse
+import os
 import random
 from pathlib import Path
 
 import numpy as np
-import torch
 from riichienv import RiichiEnv
 
 from riichienv_ml.config import load_config, import_class
 from riichienv_ml.utils import resolve_train_device
+
+if os.getenv("RIICHIENV_DISABLE_CUDNN_V8", "1").lower() not in ("0", "false", "no"):
+    os.environ.setdefault("TORCH_CUDNN_V8_API_DISABLED", "1")
+import torch
+if os.getenv("RIICHIENV_DISABLE_CUDNN", "1").lower() not in ("0", "false", "no"):
+    torch.backends.cudnn.enabled = False
 
 
 def parse_args() -> argparse.Namespace:
