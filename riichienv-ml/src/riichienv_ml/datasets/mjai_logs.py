@@ -1,6 +1,7 @@
 import glob
 import hashlib
 import json
+import logging
 import os
 import random
 from pathlib import Path
@@ -10,6 +11,8 @@ import torch
 from torch.utils.data import IterableDataset
 
 from riichienv import MjaiReplay
+
+logger = logging.getLogger(__name__)
 
 
 class _ParsedReplay:
@@ -312,6 +315,7 @@ class MCDataset(BaseDataset):
         files = self._get_files()
         if self.is_train:
             random.shuffle(files)
+        total_files = len(files)
 
         # Shard files across DataLoader workers to avoid duplicated work
         worker_info = torch.utils.data.get_worker_info()
@@ -325,9 +329,11 @@ class MCDataset(BaseDataset):
         except ValueError:
             max_error_logs = 1
         error_count = 0
+        skipped_files = 0
 
         for file_path in files:
             if self._is_known_bad_replay(file_path):
+                skipped_files += 1
                 continue
             cache_path = self._cache_path(file_path) if self.enable_cache else None
 
@@ -339,6 +345,7 @@ class MCDataset(BaseDataset):
                 buffer = self._build_samples_from_replay(file_path)
                 if not buffer:
                     self._mark_bad_replay(file_path, RuntimeError("No usable samples extracted"))
+                    skipped_files += 1
                     continue
                 if self.is_train:
                     random.shuffle(buffer)
@@ -349,13 +356,17 @@ class MCDataset(BaseDataset):
                 yield from buffer
             except Exception as e:
                 error_count += 1
+                skipped_files += 1
                 if _is_replay_desync_error(e):
                     self._mark_bad_replay(file_path, e)
                 # Skip malformed or corrupted replay files.
                 if error_count <= max_error_logs or error_count % 100 == 0:
-                    print(
-                        f"[MC worker={worker_label}] Error processing replay: {file_path}: {e} "
-                        f"(errors={error_count})"
+                    logger.warning(
+                        "[MC worker=%s] Error processing replay: %s: %s (errors=%d)",
+                        worker_label,
+                        file_path,
+                        e,
+                        error_count,
                     )
                 if cache_path is not None and cache_path.exists():
                     try:
@@ -365,9 +376,17 @@ class MCDataset(BaseDataset):
                 continue
 
         if error_count > max_error_logs:
-            print(
-                f"[MC worker={worker_label}] Suppressed {error_count - max_error_logs} "
-                "additional replay errors."
+            logger.warning(
+                "[MC worker=%s] Suppressed %d additional replay errors.",
+                worker_label,
+                error_count - max_error_logs,
+            )
+        if skipped_files > 0:
+            logger.warning(
+                "[MC worker=%s] Skipped %d/%d replay files.",
+                worker_label,
+                skipped_files,
+                total_files,
             )
 
 

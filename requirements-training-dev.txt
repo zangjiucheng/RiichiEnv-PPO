@@ -1,0 +1,28 @@
+# Full environment for training + notebook development (4p/3p GRP/CQL/PPO).
+# Install with:
+#   pip install -r requirements-training-dev.txt
+
+# Core ML / training
+torch
+numpy
+pydantic>=2.0.0
+pyyaml>=6.0
+tqdm>=4.67.1
+loguru>=0.7.3
+wandb>=0.24.0
+python-dotenv
+ray[default]>=2.9.0
+riichienv==0.4.1
+torchrl>=0.3.0
+tensordict>=0.3.0
+
+# Data / utility (kept aligned with project deps)
+polars>=1.37.1
+
+# Notebook / interactive dev
+jupyterlab
+ipykernel
+ipywidgets
+
+# Optional script support
+huggingface_hub
