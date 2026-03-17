@@ -198,6 +198,24 @@ python riichienv-ml/scripts/infer_riichienv.py \
   --sample --temperature 0.8
 ```
 
+## Optional: Browser UI For Human Vs 3 AI
+
+Run a local browser app for manual play with the built-in 3D board viewer and clickable action buttons:
+
+```sh
+python riichienv-ml/scripts/human_vs_ai_web.py --host 127.0.0.1 --port 8000
+```
+
+Then open `http://127.0.0.1:8000` in your browser.
+
+Notes:
+- Opponents use your pretrained policy by default:
+  `riichienv-ml/src/riichienv_ml/configs/4p/ppo.yml` +
+  `checkpoints/model_50.pth`.
+- Override the model with `--config`, `--model`, `--section`, and `--device` if needed.
+- The page auto-advances AI turns until it is your turn.
+- The board view comes from `riichienv.visualizer.GameViewer`; tile and call selection happen through regular browser buttons with keyboard shortcuts.
+
 ## Optional: Online Teacher BC (4p)
 
 Requires an external teacher plugin (not included in this repo):
