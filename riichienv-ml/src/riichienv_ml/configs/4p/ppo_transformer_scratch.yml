@@ -1,0 +1,73 @@
+ppo:
+  game:
+    n_players: 4
+  algorithm: ppo
+  # No pretrained checkpoint: bc_model_seq.pth would be the natural warm
+  # start but doesn't exist yet (its online-teacher BC trainer needs the
+  # riichienv-ml-xt plugin, which isn't installed). Training from a random
+  # TransformerActorCritic init instead.
+  load_model: null
+  device: cuda
+  model_class: riichienv_ml.models.transformer.TransformerActorCritic
+  encoder_class: riichienv_ml.features.sequence_features.SequenceFeaturePackedEncoder
+  # Must match model.max_prog_len / model.max_cand_len below, or PACKED_SIZE
+  # will mismatch what the transformer expects.
+  encoder:
+    max_prog_len: 512
+    max_cand_len: 64
+  num_workers: 20
+  num_steps: 2000
+  batch_size: 512
+  # ppo.yml/ppo_transformer.yml's lr/ppo_clip/ppo_epochs/entropy_coef are all
+  # tuned for gently fine-tuning an already-good checkpoint. Starting from
+  # random weights instead, so using PpoConfig's own from-scratch defaults
+  # (see config.py) rather than those fine-tuning values.
+  lr: 1e-4
+  gamma: 1.0
+  max_grad_norm: 0.5
+  ppo_clip: 0.2
+  ppo_epochs: 4
+  gae_lambda: 0.95
+  entropy_coef: 0.01
+  value_coef: 0.5
+  grp_model: artifacts/4p/grp_model.pth
+  pts_weight: [6.0, 4.0, 2.0, 0.0]
+  weight_decay: 0.1
+  # No teacher checkpoint to distill towards -- with load_model unset, the
+  # ref_model would just be a second, differently-seeded random network,
+  # so KL-regularizing towards it would add noise rather than signal.
+  alpha_kl: 0.0
+  alpha_kl_warmup_steps: 50
+  teacher_model: null
+  aux_weight: 0.0
+  async_rollout: true
+  eval_interval: 50
+  eval_episodes: 192
+  # NOTE: self-attention over ~600 tokens (25 sparse + 512 progression + 64
+  # candidates + CLS) is far more expensive per sample than the ResNet CNN
+  # used by ppo.yml/ppo_v2.yml. Workers run this on CPU (worker_device: cpu)
+  # for policy inference during rollout collection; watch the worker's
+  # "trans/s" log line and switch to worker_device: cuda / gpu_per_worker > 0,
+  # or reduce num_workers / num_envs_per_worker, if collection becomes the
+  # bottleneck.
+  worker_device: cpu
+  gpu_per_worker: 0.0
+  num_envs_per_worker: 32
+  checkpoint_dir: artifacts/4p/ppo_transformer_scratch/checkpoints
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
+  evaluator:
+    model_path: artifacts/teacher/best_model.pth
+    eval_episodes: 48
+    eval_device: cuda
+  wandb_tags: [online, ppo, transformer, scratch]
+  model:
+    d_model: 256
+    nhead: 8
+    num_layers: 6
+    dim_feedforward: 1024
+    dropout: 0.1
+    num_actions: 82
+    d_sub: 32
+    max_prog_len: 512
+    max_cand_len: 64
