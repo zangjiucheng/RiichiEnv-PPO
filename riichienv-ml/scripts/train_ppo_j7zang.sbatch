@@ -1,0 +1,98 @@
+#!/bin/bash
+# SLURM launcher for Stage 3 (Online PPO) on the j7zang MFCF gpu-gen node.
+#
+# Hardware/QOS reference (MFCF gpu-gen partition, qos_rtx6000_max):
+#   1x RTX6000 GPU (QOS caps this at 1 regardless of cpus_per_task/mem),
+#   up to 25 CPU cores / 200G mem (requesting 24/160G, leaving headroom
+#   below the ceiling), single node, MaxWall=24:00:00, MaxJobsPU=1 (only
+#   one job runs at a time), MaxSubmitPU=3.
+#
+# Usage:
+#   sbatch riichienv-ml/scripts/train_ppo_j7zang.sbatch
+#   CONFIG=.../ppo_transformer.yml sbatch riichienv-ml/scripts/train_ppo_j7zang.sbatch
+#
+#SBATCH --job-name=riichi-ppo
+#SBATCH --partition=gpu-gen
+#SBATCH --account=normal
+#SBATCH --qos=qos_rtx6000_max
+#SBATCH --gres=gpu:rtx6000:1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=160G
+#SBATCH --time=24:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=j7zang@uwaterloo.ca
+#SBATCH --output=logs/%x-%j.out
+#SBATCH --error=logs/%x-%j.err
+
+set -euo pipefail
+
+# --- Editable settings (override via env var when submitting) ---------------
+REPO_ROOT="${REPO_ROOT:-$HOME/RiichiEnv-PPO}"
+VENV_ACTIVATE="${VENV_ACTIVATE:-$REPO_ROOT/.venv/bin/activate}"
+# CNN model (ppo_v2.yml) is the recommended default: it's cheap enough per
+# inference step that CPU-only rollout workers keep up even at this scale.
+# The transformer config (ppo_transformer.yml) does ~600-token self-attention
+# per step and will still bottleneck CPU workers despite the extra cores --
+# only switch to it if you also pass worker_device=cuda / gpu_per_worker>0
+# below so inference batches onto the same RTX6000 as the learner (the QOS
+# caps this node at 1 GPU, so hero+baseline workers would be sharing it).
+CONFIG="${CONFIG:-$REPO_ROOT/riichienv-ml/src/riichienv_ml/configs/4p/ppo_v2.yml}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO_ROOT/artifacts/4p/ppo_v2/checkpoints}"
+WORKER_DEVICE="${WORKER_DEVICE:-cpu}"
+GPU_PER_WORKER="${GPU_PER_WORKER:-0.0}"
+
+cd "$REPO_ROOT"
+mkdir -p logs "$CHECKPOINT_DIR"
+
+# shellcheck disable=SC1090
+source "$VENV_ACTIVATE"
+
+# Single node, single GPU, 24 CPU cores total (cpus_per_task=24 above): keep
+# every process single-threaded so N Ray worker processes don't each spin up
+# their own BLAS/OpenMP thread pool on top of Ray's own process-level
+# parallelism and oversubscribe the cores.
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+
+# MFCF compute nodes are often air-gapped; default to offline W&B so a failed
+# network call can't stall or kill the job. Sync afterwards from a node with
+# internet access via `wandb sync <run_dir>`, or export WANDB_MODE=online
+# when submitting if this node does have outbound access.
+export WANDB_MODE="${WANDB_MODE:-offline}"
+
+# Resume from the latest checkpoint if one exists, so re-submitting this
+# script after the 24h MaxWall (or a preemption) continues training instead
+# of restarting from the config's `load_model`.
+LATEST_CKPT=""
+if [ -d "$CHECKPOINT_DIR" ]; then
+  LATEST_CKPT=$(ls -v "$CHECKPOINT_DIR"/model_*.pth 2>/dev/null | tail -n 1 || true)
+fi
+
+RESUME_ARGS=()
+if [ -n "$LATEST_CKPT" ]; then
+  echo "Resuming from checkpoint: $LATEST_CKPT"
+  RESUME_ARGS=(--load_model "$LATEST_CKPT")
+else
+  echo "No checkpoint found under $CHECKPOINT_DIR; using load_model from $CONFIG" \
+       "(must already exist -- run Stage 1/2 GRP+CQL first if it doesn't)."
+fi
+
+# num_workers/num_envs_per_worker tuned for cpus_per_task=24: 20 Ray rollout
+# worker processes (~1 core each, since PPOWorker pins torch to a single
+# thread) + headroom for the Ray driver/GCS and the learner's CPU-side work
+# (data transfer, Python overhead). GPU stays untouched by workers (worker_device=cpu,
+# gpu_per_worker=0.0) since the QOS caps this node at 1 GPU, reserved for the
+# learner. Watch each worker's "trans/s" log line (emitted every
+# collect_episodes() call) and rebalance num_workers/num_envs_per_worker if
+# collection is the bottleneck.
+python riichienv-ml/scripts/train_ppo.py \
+  -c "$CONFIG" \
+  --num_workers 20 \
+  --num_envs_per_worker 32 \
+  --worker_device "$WORKER_DEVICE" \
+  --gpu_per_worker "$GPU_PER_WORKER" \
+  --checkpoint_dir "$CHECKPOINT_DIR" \
+  "${RESUME_ARGS[@]}"
