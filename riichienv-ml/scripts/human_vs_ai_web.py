@@ -431,16 +431,34 @@ def _public_event_text(session: SessionState, ev: dict[str, Any]) -> str | None:
         if actor is None:
             return None
         target = ev.get("target")
+        detail = _describe_hora(session, actor, ev.get("deltas"))
+        suffix = f" ({detail})" if detail else ""
         if target == actor:
-            return f"{session.player_names[actor]} wins by tsumo."
+            return f"{session.player_names[actor]} wins by tsumo{suffix}."
         if target is not None:
-            return f"{session.player_names[actor]} wins off {session.player_names[target]}."
-        return f"{session.player_names[actor]} wins."
+            return f"{session.player_names[actor]} wins off {session.player_names[target]}{suffix}."
+        return f"{session.player_names[actor]} wins{suffix}."
 
     if event_type == "ryukyoku":
         return "Round ends in draw."
 
     return None
+
+
+def _describe_hora(session: SessionState, actor: int, deltas: Any) -> str | None:
+    win_result = session.env.win_results.get(actor) if session.env is not None else None
+    if win_result is None:
+        return None
+
+    yaku_names = [yaku.name_en for yaku in win_result.yaku_list()]
+    parts = [", ".join(yaku_names)] if yaku_names else []
+    if win_result.yakuman:
+        parts.append("Yakuman")
+    else:
+        parts.append(f"{win_result.han} han {win_result.fu} fu")
+    if isinstance(deltas, list) and 0 <= actor < len(deltas):
+        parts.append(f"{deltas[actor]:+d} pts")
+    return "; ".join(parts) if parts else None
 
 
 def _format_public_action(ev: dict[str, Any]) -> str:
