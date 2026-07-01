@@ -216,6 +216,9 @@ class PpoConfig(WandbConfig):
     model: ModelConfig = ModelConfig()
     model_class: str = "riichienv_ml.models.actor_critic.ActorCriticNetwork"
     encoder_class: str = "riichienv_ml.features.feat_v1.ObservationEncoder"
+    # Extra kwargs forwarded to encoder_class (beyond tile_dim), e.g.
+    # max_prog_len/max_cand_len for SequenceFeaturePackedEncoder.
+    encoder: dict = {}
     # Data collection
     collect_hero_only: bool = False
     # GRP reward shaping (per-kyoku reward)

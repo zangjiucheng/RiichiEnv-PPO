@@ -1,0 +1,64 @@
+ppo:
+  game:
+    n_players: 4
+  algorithm: ppo
+  # Must be a TransformerActorCritic checkpoint (e.g. from bc_model_seq.yml).
+  # A CNN/QNetwork checkpoint (like the CQL model used by ppo.yml/ppo_v2.yml)
+  # shares no weights with this architecture and cannot be converted.
+  load_model: artifacts/4p/bc_model_seq.pth
+  device: cuda
+  model_class: riichienv_ml.models.transformer.TransformerActorCritic
+  encoder_class: riichienv_ml.features.sequence_features.SequenceFeaturePackedEncoder
+  # Must match model.max_prog_len / model.max_cand_len below, or PACKED_SIZE
+  # will mismatch what the transformer expects.
+  encoder:
+    max_prog_len: 512
+    max_cand_len: 64
+  num_workers: 16
+  num_steps: 500
+  batch_size: 512
+  lr: 1e-5
+  gamma: 1.0
+  max_grad_norm: 0.5
+  ppo_clip: 0.02
+  ppo_epochs: 2
+  gae_lambda: 0.95
+  entropy_coef: 0.001
+  value_coef: 0.5
+  grp_model: artifacts/4p/grp_model.pth
+  pts_weight: [6.0, 4.0, 2.0, 0.0]
+  weight_decay: 0.1
+  alpha_kl: 0.1
+  alpha_kl_warmup_steps: 50
+  aux_weight: 0.0
+  async_rollout: true
+  eval_interval: 50
+  eval_episodes: 192
+  # NOTE: self-attention over ~600 tokens (25 sparse + 512 progression + 64
+  # candidates + CLS) is far more expensive per sample than the ResNet CNN
+  # used by ppo.yml/ppo_v2.yml. Workers run this on CPU (worker_device: cpu)
+  # for policy inference during rollout collection; watch the worker's
+  # "trans/s" log line and switch to worker_device: cuda / gpu_per_worker > 0,
+  # or reduce num_workers / num_envs_per_worker, if collection becomes the
+  # bottleneck.
+  worker_device: cpu
+  gpu_per_worker: 0.0
+  num_envs_per_worker: 32
+  checkpoint_dir: artifacts/4p/ppo_transformer/checkpoints
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
+  evaluator:
+    model_path: artifacts/teacher/best_model.pth
+    eval_episodes: 48
+    eval_device: cuda
+  wandb_tags: [online, ppo, transformer]
+  model:
+    d_model: 256
+    nhead: 8
+    num_layers: 6
+    dim_feedforward: 1024
+    dropout: 0.1
+    num_actions: 82
+    d_sub: 32
+    max_prog_len: 512
+    max_cand_len: 64

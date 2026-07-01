@@ -148,6 +148,7 @@ def run_ppo_training(cfg):
         model_config=model_config,
         model_class=cfg.model_class,
         encoder_class=cfg.encoder_class,
+        encoder_config=cfg.encoder,
         grp_model=cfg.grp_model,
         pts_weight=cfg.pts_weight,
         n_players=game.n_players,

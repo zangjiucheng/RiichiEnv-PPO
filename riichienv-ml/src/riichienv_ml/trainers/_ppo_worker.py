@@ -22,6 +22,7 @@ class PPOWorker:
                  model_config: dict | None = None,
                  model_class: str = "riichienv_ml.models.actor_critic.ActorCriticNetwork",
                  encoder_class: str = "riichienv_ml.features.feat_v1.ObservationEncoder",
+                 encoder_config: dict | None = None,
                  grp_model: str | None = None,
                  pts_weight: list[float] | None = None,
                  n_players: int = 4,
@@ -54,7 +55,8 @@ class PPOWorker:
             self.baseline_model = torch.compile(self.baseline_model)
 
         EncoderClass = import_class(encoder_class)
-        self.encoder = EncoderClass(tile_dim=tile_dim)
+        ec = encoder_config or {}
+        self.encoder = EncoderClass(tile_dim=tile_dim, **ec)
         self._compiled_warmup = False
 
         pw = pts_weight or GAME_PARAMS[n_players].get("pts_weight", [10.0, 4.0, -4.0, -10.0])
