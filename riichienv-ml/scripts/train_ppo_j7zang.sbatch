@@ -42,6 +42,9 @@ CONFIG="${CONFIG:-$REPO_ROOT/riichienv-ml/src/riichienv_ml/configs/4p/ppo_v2.yml
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO_ROOT/artifacts/4p/ppo_v2/checkpoints}"
 WORKER_DEVICE="${WORKER_DEVICE:-cpu}"
 GPU_PER_WORKER="${GPU_PER_WORKER:-0.0}"
+# Optional override for the config's own num_steps (e.g. to fit a wall-clock
+# budget); empty means "use whatever the config specifies".
+NUM_STEPS="${NUM_STEPS:-}"
 
 cd "$REPO_ROOT"
 mkdir -p logs "$CHECKPOINT_DIR"
@@ -49,13 +52,18 @@ mkdir -p logs "$CHECKPOINT_DIR"
 # shellcheck disable=SC1090
 source "$VENV_ACTIVATE"
 
-# Single node, single GPU, 24 CPU cores total (cpus_per_task=24 above): keep
-# every process single-threaded so N Ray worker processes don't each spin up
-# their own BLAS/OpenMP thread pool on top of Ray's own process-level
-# parallelism and oversubscribe the cores.
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
+# NOT setting OMP_NUM_THREADS/MKL_NUM_THREADS/OPENBLAS_NUM_THREADS globally
+# here: PPOWorker.__init__ already calls torch.set_num_threads(1) itself, so
+# the N Ray rollout worker processes are already correctly single-threaded
+# for torch regardless of these env vars. Setting them at the shell level
+# would ALSO throttle the main driver process's own CPU-bound work between
+# rollouts (np.concatenate over the ~100k+ transition batch, the PPO update's
+# tensor prep) down to 1 thread, for no benefit -- that work happens after
+# all workers are idle, so the driver can use the freed-up cores. Measured
+# ~9.5 min/step with the blanket throttle in place (worker collection itself
+# was only ~2 min); if this doesn't meaningfully close that gap, the
+# bottleneck is elsewhere (GPU-bound PPO update, KL-vs-teacher forward pass,
+# Ray dispatch overhead) and these should be reinstated for worker safety.
 
 # Confirmed the login node (tsubmit) reaches api.wandb.ai; the gpu-gen compute
 # nodes weren't directly verified (an in-job srun --overlap probe hit an
@@ -104,6 +112,11 @@ echo "W&B run name: $WANDB_NAME"
 # learner. Watch each worker's "trans/s" log line (emitted every
 # collect_episodes() call) and rebalance num_workers/num_envs_per_worker if
 # collection is the bottleneck.
+STEP_ARGS=()
+if [ -n "$NUM_STEPS" ]; then
+  STEP_ARGS=(--num_steps "$NUM_STEPS")
+fi
+
 python riichienv-ml/scripts/train_ppo.py \
   -c "$CONFIG" \
   --num_workers 20 \
@@ -111,4 +124,5 @@ python riichienv-ml/scripts/train_ppo.py \
   --worker_device "$WORKER_DEVICE" \
   --gpu_per_worker "$GPU_PER_WORKER" \
   --checkpoint_dir "$CHECKPOINT_DIR" \
+  "${STEP_ARGS[@]}" \
   "${RESUME_ARGS[@]}"
