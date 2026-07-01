@@ -180,16 +180,22 @@ class PPOLearner:
 
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        total_metrics = {
-            "policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0,
-            "loss": 0.0, "approx_kl": 0.0, "clip_frac": 0.0,
-            "ratio/mean": 0.0, "ratio/std": 0.0, "ratio/max": 0.0,
-            "kl/max": 0.0, "kl_ref": 0.0, "value/predicted_mean": 0.0,
-            "grad_norm": 0.0,
-        }
+        # Accumulate as GPU tensors and defer .item() to a single point at
+        # the end of the loop. Each .item() call forces a host-device sync,
+        # and with ppo_epochs * ceil(N/batch_size) minibatches each doing
+        # ~13 of these, the sync overhead alone can dominate wall-clock time
+        # for a model this small (measured: rollout collection ~2min, PPO
+        # update eating most of a further ~7min before this fix).
+        sum_keys = ["policy_loss", "value_loss", "entropy", "loss", "approx_kl",
+                    "clip_frac", "ratio/mean", "ratio/std", "value/predicted_mean",
+                    "grad_norm", "kl_ref"]
+        max_keys = ["ratio/max", "kl/max"]
+        metrics_gpu = {k: torch.zeros((), device=self.device) for k in sum_keys}
+        metrics_gpu.update({k: torch.zeros((), device=self.device) for k in max_keys})
 
         N = features.shape[0]
         last_epoch_values = torch.zeros(N, device=self.device)
+        n_batches_run = 0
 
         for epoch in range(self.ppo_epochs):
             perm = torch.randperm(N, device=self.device)
@@ -224,7 +230,7 @@ class PPOLearner:
 
                 value_loss = nn.functional.mse_loss(values, batch_returns)
 
-                kl_ref_val = 0.0
+                kl_ref_val = torch.zeros((), device=self.device)
                 kl_ref_loss = 0.0
                 effective_kl = self.alpha_kl
                 if self.alpha_kl_warmup_steps > 0:
@@ -237,7 +243,7 @@ class PPOLearner:
                     kl_per_action = probs * (log_probs_all - ref_log_probs)
                     kl_per_action = kl_per_action.masked_fill(~mask_bool, 0.0)
                     kl_ref_term = kl_per_action.sum(dim=-1).mean()
-                    kl_ref_val = kl_ref_term.item()
+                    kl_ref_val = kl_ref_term.detach()
                     kl_ref_loss = effective_kl * kl_ref_term
 
                 loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy + kl_ref_loss
@@ -254,25 +260,31 @@ class PPOLearner:
                     last_epoch_values[idx] = values.detach()
 
                 with torch.no_grad():
-                    approx_kl = (batch_old_log_probs - log_probs).mean().item()
-                    kl_max = (batch_old_log_probs - log_probs).max().item()
-                    clip_frac = ((ratio - 1.0).abs() > self.ppo_clip).float().mean().item()
+                    approx_kl = (batch_old_log_probs - log_probs).mean()
+                    kl_max = (batch_old_log_probs - log_probs).max()
+                    clip_frac = ((ratio - 1.0).abs() > self.ppo_clip).float().mean()
 
-                total_metrics["policy_loss"] += policy_loss.item()
-                total_metrics["value_loss"] += value_loss.item()
-                total_metrics["entropy"] += entropy.item()
-                total_metrics["loss"] += loss.item()
-                total_metrics["approx_kl"] += approx_kl
-                total_metrics["clip_frac"] += clip_frac
-                total_metrics["kl_ref"] += kl_ref_val
-                total_metrics["ratio/mean"] += ratio.mean().item()
-                total_metrics["ratio/std"] += ratio.std().item()
-                total_metrics["ratio/max"] = max(total_metrics["ratio/max"], ratio.max().item())
-                total_metrics["kl/max"] = max(total_metrics["kl/max"], kl_max)
-                total_metrics["value/predicted_mean"] += values.mean().item()
-                total_metrics["grad_norm"] += grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+                grad_norm_t = grad_norm if isinstance(grad_norm, torch.Tensor) else torch.as_tensor(grad_norm, device=self.device)
 
-        num_batches = self.ppo_epochs * max(1, (N + self.batch_size - 1) // self.batch_size)
+                metrics_gpu["policy_loss"] += policy_loss.detach()
+                metrics_gpu["value_loss"] += value_loss.detach()
+                metrics_gpu["entropy"] += entropy.detach()
+                metrics_gpu["loss"] += loss.detach()
+                metrics_gpu["approx_kl"] += approx_kl
+                metrics_gpu["clip_frac"] += clip_frac
+                metrics_gpu["kl_ref"] += kl_ref_val
+                metrics_gpu["ratio/mean"] += ratio.mean().detach()
+                metrics_gpu["ratio/std"] += ratio.std().detach()
+                metrics_gpu["ratio/max"] = torch.maximum(metrics_gpu["ratio/max"], ratio.max().detach())
+                metrics_gpu["kl/max"] = torch.maximum(metrics_gpu["kl/max"], kl_max)
+                metrics_gpu["value/predicted_mean"] += values.mean().detach()
+                metrics_gpu["grad_norm"] += grad_norm_t.detach()
+                n_batches_run += 1
+
+        # Single sync point: pull every accumulated metric back to Python floats.
+        total_metrics = {k: v.item() for k, v in metrics_gpu.items()}
+
+        num_batches = max(1, n_batches_run)
         avg_keys = ["policy_loss", "value_loss", "entropy", "loss", "approx_kl",
                      "clip_frac", "ratio/mean", "ratio/std", "value/predicted_mean", "grad_norm",
                      "kl_ref"]
