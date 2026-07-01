@@ -57,11 +57,15 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
-# MFCF compute nodes are often air-gapped; default to offline W&B so a failed
-# network call can't stall or kill the job. Sync afterwards from a node with
-# internet access via `wandb sync <run_dir>`, or export WANDB_MODE=online
-# when submitting if this node does have outbound access.
-export WANDB_MODE="${WANDB_MODE:-offline}"
+# Confirmed the login node (tsubmit) reaches api.wandb.ai; the gpu-gen compute
+# nodes weren't directly verified (an in-job srun --overlap probe hit an
+# unrelated slurmd RPC error) but share the same network egress in practice,
+# so default to online. If a compute node turns out to be air-gapped, wandb's
+# init will fail/retry -- override with WANDB_MODE=offline when submitting
+# and sync afterwards via `wandb sync <run_dir> --entity ... --project ...`
+# (the entity/project flags matter -- a bare `wandb sync` can silently land
+# in the wrong entity if the submitting account's default differs).
+export WANDB_MODE="${WANDB_MODE:-online}"
 
 # Resume from the latest checkpoint if one exists, so re-submitting this
 # script after the 24h MaxWall (or a preemption) continues training instead
@@ -79,6 +83,18 @@ else
   echo "No checkpoint found under $CHECKPOINT_DIR; using load_model from $CONFIG" \
        "(must already exist -- run Stage 1/2 GRP+CQL first if it doesn't)."
 fi
+
+# Meaningful W&B run name: config + what it resumed from + a timestamp for
+# uniqueness across re-submissions (init_wandb() never sets `name` itself,
+# so wandb.init() picks up WANDB_NAME automatically).
+CONFIG_NAME=$(basename "$CONFIG" .yml)
+if [ -n "$LATEST_CKPT" ]; then
+  RESUME_TAG="resume$(basename "$LATEST_CKPT" .pth | sed 's/^model_//')"
+else
+  RESUME_TAG="fresh"
+fi
+export WANDB_NAME="${WANDB_NAME:-${CONFIG_NAME}-${RESUME_TAG}-$(date +%Y%m%d_%H%M%S)}"
+echo "W&B run name: $WANDB_NAME"
 
 # num_workers/num_envs_per_worker tuned for cpus_per_task=24: 20 Ray rollout
 # worker processes (~1 core each, since PPOWorker pins torch to a single
