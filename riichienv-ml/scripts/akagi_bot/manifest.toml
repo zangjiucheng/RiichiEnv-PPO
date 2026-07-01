@@ -1,0 +1,51 @@
+manifest_version = 1
+
+[bot]
+name        = "riichienv-ppo"
+display     = "RiichiEnv-PPO"
+description = "Runs a trained RiichiEnv-PPO checkpoint (PPO/BC/CQL ActorCritic) live."
+version     = "0.1.0"
+supported_modes = ["4p", "3p"]
+
+[settings.config_path_4p]
+type    = "string"
+label   = "4P config YAML"
+default = "riichienv-ml/src/riichienv_ml/configs/4p/ppo_v2.yml"
+help    = "Path to the training YAML (defines model_class/encoder_class/model dims). Relative to the RiichiEnv-PPO repo root, or absolute."
+
+[settings.model_path_4p]
+type    = "string"
+label   = "4P checkpoint (.pth or dir)"
+default = "artifacts/4p/ppo_v2/checkpoints"
+help    = "A directory auto-picks the highest-numbered model_*.pth in it."
+
+[settings.config_path_3p]
+type    = "string"
+label   = "3P config YAML"
+default = "riichienv-ml/src/riichienv_ml/configs/3p/ppo.yml"
+
+[settings.model_path_3p]
+type    = "string"
+label   = "3P checkpoint (.pth or dir)"
+default = "artifacts/3p/ppo/checkpoints"
+
+[settings.device]
+type    = "enum"
+label   = "Inference device"
+default = "cpu"
+choices = ["cpu", "cuda"]
+
+[settings.sample]
+type    = "bool"
+label   = "Sample actions"
+default = false
+help    = "Off = greedy argmax (recommended for live play). On = temperature sampling."
+
+[settings.temperature]
+type    = "float"
+label   = "Sampling temperature"
+default = 1.0
+help    = "Only used when 'Sample actions' is on."
+min     = 0.1
+max     = 2.0
+step    = 0.1

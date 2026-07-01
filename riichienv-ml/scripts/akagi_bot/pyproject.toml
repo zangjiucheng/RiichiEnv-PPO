@@ -1,0 +1,18 @@
+[project]
+name = "riichienv-ppo-bot"
+version = "0.1.0"
+description = "Akagi bridge for RiichiEnv-PPO trained models."
+requires-python = ">=3.12"
+
+dependencies = [
+    "riichienv==0.4.8",
+    "torch>=2.2",
+    "numpy",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+]
+
+# This bot is a script, not a library -- uv installs only the
+# dependencies and skips trying to build the project itself.
+[tool.uv]
+package = false
