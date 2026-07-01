@@ -13,6 +13,7 @@ Double-buffered (async_rollout=True):
 import sys
 import os
 import threading
+import time
 
 import ray
 import wandb
@@ -246,12 +247,14 @@ def run_ppo_training(cfg):
 
     try:
         while step < cfg.num_steps:
+            t_collect_start = time.time()
             if prefetched_futures is not None:
                 all_results = ray.get(prefetched_futures)
                 prefetched_futures = None
             else:
                 futures = [w.collect_episodes.remote() for w in workers]
                 all_results = ray.get(futures)
+            t_collect = time.time() - t_collect_start
 
             batch_parts = []
             worker_stats_list = []
@@ -267,6 +270,7 @@ def run_ppo_training(cfg):
                     prefetched_futures = [w.collect_episodes.remote() for w in workers]
                 continue
 
+            t_prep_start = time.time()
             rollout_batch = {
                 "features": torch.from_numpy(np.concatenate([b["features"] for b in batch_parts])),
                 "masks": torch.from_numpy(np.concatenate([b["mask"] for b in batch_parts])),
@@ -276,13 +280,19 @@ def run_ppo_training(cfg):
                 "returns": torch.from_numpy(np.concatenate([b["return"] for b in batch_parts])),
             }
             n_trans = len(rollout_batch["actions"])
+            t_prep = time.time() - t_prep_start
 
             is_eval_step = (step + 1) > 0 and (step + 1) % cfg.eval_interval == 0
             if cfg.async_rollout and not is_eval_step and (step + 1) < cfg.num_steps:
                 prefetched_futures = [w.collect_episodes.remote() for w in workers]
 
+            t_update_start = time.time()
             metrics = learner.update(rollout_batch)
+            t_update = time.time() - t_update_start
             step += 1
+            metrics["time/collect_s"] = t_collect
+            metrics["time/prep_s"] = t_prep
+            metrics["time/update_s"] = t_update
 
             if worker_stats_list:
                 for key in worker_stats_list[0]:
@@ -311,6 +321,13 @@ def run_ppo_training(cfg):
                         f"\u00b1{metrics.get('rollout/kyoku_reward_std', 0):.3f}"
                         f", k_len={metrics.get('rollout/kyoku_length_mean', 0):.1f}"
                     )
+            log_msg += (
+                f", t_collect={t_collect:.1f}s, t_prep={t_prep:.1f}s, t_update={t_update:.1f}s"
+                f" (data={metrics.get('time/data_transfer_s', 0):.1f}s,"
+                f" teacher_fwd={metrics.get('time/teacher_fwd_s', 0):.1f}s,"
+                f" main_fwd_bwd={metrics.get('time/main_fwd_bwd_s', 0):.1f}s,"
+                f" n_batches={metrics.get('time/n_batches', 0):.0f})"
+            )
             logger.info(log_msg)
             wandb.log(metrics, step=step)
 
@@ -350,6 +367,7 @@ def run_ppo_training(cfg):
                     except Exception as e:
                         logger.error(f"TP evaluation failed at step {step}: {e}")
 
+            t_sync_start = time.time()
             weights = {k: v.cpu() for k, v in learner.get_weights().items()}
 
             has_nan = False
@@ -364,6 +382,8 @@ def run_ppo_training(cfg):
             weight_ref = ray.put(weights)
             for w in workers:
                 w.update_weights.remote(weight_ref)
+            t_sync = time.time() - t_sync_start
+            logger.info(f"Step {step}: t_sync={t_sync:.1f}s")
 
             # Periodic baseline update for self-play curriculum
             # (skip when using a fixed external baseline_model)

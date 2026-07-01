@@ -1,3 +1,5 @@
+import time
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -159,6 +161,10 @@ class PPOLearner:
             self.ref_model.load_state_dict(self.model.state_dict())
             logger.info("Initialized frozen teacher from current student checkpoint")
 
+    def _sync(self):
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+
     def update(self, rollout_batch: dict) -> dict:
         """PPO update over a batch of on-policy trajectory data."""
         self.model.train()
@@ -166,12 +172,16 @@ class PPOLearner:
             if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d)):
                 module.eval()
 
+        self._sync()
+        t_data_start = time.time()
         features = rollout_batch["features"].to(self.device)
         masks = rollout_batch["masks"].to(self.device)
         actions = rollout_batch["actions"].long().to(self.device)
         old_log_probs = rollout_batch["old_log_probs"].to(self.device)
         advantages = rollout_batch["advantages"].to(self.device)
         returns = rollout_batch["returns"].to(self.device)
+        self._sync()
+        t_data_transfer = time.time() - t_data_start
 
         adv_raw_mean = advantages.mean().item()
         adv_raw_std = advantages.std().item()
@@ -181,11 +191,16 @@ class PPOLearner:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # Accumulate as GPU tensors and defer .item() to a single point at
-        # the end of the loop. Each .item() call forces a host-device sync,
-        # and with ppo_epochs * ceil(N/batch_size) minibatches each doing
-        # ~13 of these, the sync overhead alone can dominate wall-clock time
-        # for a model this small (measured: rollout collection ~2min, PPO
-        # update eating most of a further ~7min before this fix).
+        # the end of the loop, avoiding a host-device sync on every one of
+        # the ~13 per-minibatch metrics. Measured: didn't move the needle on
+        # its own (still ~9.5 min/step), so the update's cost is elsewhere --
+        # t_data_transfer/t_teacher_fwd/t_main_fwd_bwd below (with explicit
+        # torch.cuda.synchronize() calls, since CUDA ops are async and a bare
+        # time.time() around them would just measure how fast the CPU can
+        # enqueue work, not how long the GPU takes) are here to find out
+        # where. Remove the sync calls once the bottleneck is identified --
+        # they're deliberately reintroducing the per-batch sync cost we just
+        # removed above, purely for this one-off profiling pass.
         sum_keys = ["policy_loss", "value_loss", "entropy", "loss", "approx_kl",
                     "clip_frac", "ratio/mean", "ratio/std", "value/predicted_mean",
                     "grad_norm", "kl_ref"]
@@ -196,6 +211,8 @@ class PPOLearner:
         N = features.shape[0]
         last_epoch_values = torch.zeros(N, device=self.device)
         n_batches_run = 0
+        t_teacher_fwd = 0.0
+        t_main_fwd_bwd = 0.0
 
         for epoch in range(self.ppo_epochs):
             perm = torch.randperm(N, device=self.device)
@@ -210,6 +227,10 @@ class PPOLearner:
                 batch_old_log_probs = old_log_probs[idx]
                 batch_advantages = advantages[idx]
                 batch_returns = returns[idx]
+
+                self._sync()
+                t_batch_start = time.time()
+                t_teacher_this_batch = 0.0
 
                 logits, values = self.model(batch_features)
 
@@ -236,6 +257,8 @@ class PPOLearner:
                 if self.alpha_kl_warmup_steps > 0:
                     effective_kl = self.alpha_kl * min(1.0, self.total_steps / self.alpha_kl_warmup_steps)
                 if self.ref_model is not None and effective_kl > 0:
+                    self._sync()
+                    t_teacher0 = time.time()
                     with torch.no_grad():
                         ref_logits, _ = self.ref_model(batch_features)
                         ref_logits = ref_logits.masked_fill(~mask_bool, -1e9)
@@ -245,6 +268,9 @@ class PPOLearner:
                     kl_ref_term = kl_per_action.sum(dim=-1).mean()
                     kl_ref_val = kl_ref_term.detach()
                     kl_ref_loss = effective_kl * kl_ref_term
+                    self._sync()
+                    t_teacher_this_batch = time.time() - t_teacher0
+                    t_teacher_fwd += t_teacher_this_batch
 
                 loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy + kl_ref_loss
 
@@ -255,6 +281,8 @@ class PPOLearner:
                 loss.backward()
                 grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
                 self.optimizer.step()
+                self._sync()
+                t_main_fwd_bwd += (time.time() - t_batch_start) - t_teacher_this_batch
 
                 if epoch == self.ppo_epochs - 1:
                     last_epoch_values[idx] = values.detach()
@@ -302,6 +330,11 @@ class PPOLearner:
             total_metrics["explained_variance"] = 0.0
         else:
             total_metrics["explained_variance"] = (1.0 - (returns - last_epoch_values).var() / var_returns).item()
+
+        total_metrics["time/data_transfer_s"] = t_data_transfer
+        total_metrics["time/teacher_fwd_s"] = t_teacher_fwd
+        total_metrics["time/main_fwd_bwd_s"] = t_main_fwd_bwd
+        total_metrics["time/n_batches"] = n_batches_run
 
         self.total_steps += 1
         return total_metrics
