@@ -17,7 +17,12 @@ ppo:
     max_cand_len: 64
   num_workers: 20
   num_steps: 2000
-  batch_size: 512
+  # batch_size is the PPO minibatch for the learner's update. The transformer's
+  # backward over ~600-token self-attention makes this the dominant GPU memory
+  # term on the single 48 GiB card: at 512 the learner alone used ~20 GiB and
+  # OOM'd mid-update while the rollout workers' resident models filled the rest.
+  # 256 halves the update's activation memory. (Overridable via --batch_size.)
+  batch_size: 256
   # ppo.yml/ppo_transformer.yml's lr/ppo_clip/ppo_epochs/entropy_coef are all
   # tuned for gently fine-tuning an already-good checkpoint. Starting from
   # random weights instead, so using PpoConfig's own from-scratch defaults

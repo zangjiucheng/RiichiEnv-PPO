@@ -109,7 +109,7 @@ def run_ppo_training(cfg):
     # deadlocks GPU workers at scale). Without this the flags are dead code
     # in the worker process.
     for _k, _v in os.environ.items():
-        if _k.startswith(("RIICHIENV_", "TORCHINDUCTOR_", "TORCH_")):
+        if _k.startswith(("RIICHIENV_", "TORCHINDUCTOR_", "TORCH_", "PYTORCH_")):
             worker_env_vars.setdefault(_k, _v)
 
     runtime_env = {
