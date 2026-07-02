@@ -47,6 +47,10 @@ ppo:
   aux_weight: 0.0
   async_rollout: true
   eval_interval: 50
+  # Save an intermediate checkpoint every N steps. Without this (default 0) the
+  # run only checkpoints at the very end, so a mid-run wall-clock cutoff or
+  # crash loses everything and there's no snapshot to pull/test mid-training.
+  checkpoint_interval: 25
   eval_episodes: 192
   # NOTE: self-attention over ~600 tokens (25 sparse + 512 progression + 64
   # candidates + CLS) is far more expensive per sample than the ResNet CNN
