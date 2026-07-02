@@ -86,6 +86,18 @@ class PPOWorker:
         else:
             self.reward_predictor = None
 
+    def ready(self):
+        """Readiness gate the driver blocks on to serialize GPU worker
+        startup. Returns only after __init__ (including the first
+        .to("cuda") that creates this process's CUDA context) has completed;
+        the cuda sync forces the context to be fully live before we report
+        ready, so the driver can bring workers up one at a time and avoid the
+        concurrent CUDA-init deadlock that hangs ~85% of all-at-once starts.
+        """
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+        return True
+
     def _apply_state_dict(self, model, state_dict):
         target = model._orig_mod if hasattr(model, "_orig_mod") else model
         for name, param in target.named_parameters():

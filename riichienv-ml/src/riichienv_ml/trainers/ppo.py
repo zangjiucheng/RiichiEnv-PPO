@@ -169,12 +169,22 @@ def run_ppo_training(cfg):
         starting_scores=game.starting_scores,
     )
     if cfg.worker_device == "cuda":
-        workers = [
-            PPOWorker.options(num_gpus=cfg.gpu_per_worker).remote(
+        # Bring CUDA workers up ONE AT A TIME. Creating all num_workers actors
+        # at once makes them race to initialize CUDA contexts on the single
+        # shared GPU, which intermittently deadlocks (~85% of runs: GPU pinned
+        # at 0% util, no worker memory ever allocated). Blocking on each
+        # worker's ready() -- which completes only after its __init__ +
+        # first .to("cuda") + a cuda sync -- before creating the next means
+        # contexts are created serially, eliminating the race. Costs ~1-2 min
+        # of extra startup, paid once.
+        workers = []
+        for i in range(cfg.num_workers):
+            w = PPOWorker.options(num_gpus=cfg.gpu_per_worker).remote(
                 i, "cuda", **worker_kwargs,
             )
-            for i in range(cfg.num_workers)
-        ]
+            ray.get(w.ready.remote())
+            workers.append(w)
+        logger.info(f"Brought up {len(workers)} CUDA workers serially")
     else:
         workers = [
             PPOWorker.remote(i, "cpu", **worker_kwargs)
