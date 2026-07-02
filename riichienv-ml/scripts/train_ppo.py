@@ -20,6 +20,13 @@ import torch
 if os.getenv("RIICHIENV_DISABLE_CUDNN", "1").lower() not in ("0", "false", "no"):
     torch.backends.cudnn.enabled = False
 
+# Enable TF32 tensor cores for fp32 matmuls (~2x faster on Ampere/Ada with
+# negligible accuracy loss) -- the transformer learner's PPO update is matmul-
+# bound (~13 min/step at fp32). Overridable via RIICHIENV_MATMUL_PRECISION
+# ("highest" restores full fp32). This sets it for the driver/learner process;
+# PPOWorker.__init__ sets the same for each rollout worker.
+torch.set_float32_matmul_precision(os.getenv("RIICHIENV_MATMUL_PRECISION", "high"))
+
 from dotenv import load_dotenv
 load_dotenv()
 

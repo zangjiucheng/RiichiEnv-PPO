@@ -32,6 +32,12 @@ class PPOWorker:
                  tile_dim: int = 34,
                  starting_scores: list[int] | None = None):
         torch.set_num_threads(1)
+        # Match the driver's TF32 setting for the worker's own GPU inference
+        # (train_ppo.py sets this for the learner; Ray workers are separate
+        # processes so they need it set here too). RIICHIENV_MATMUL_PRECISION
+        # is forwarded to workers via runtime_env.env_vars.
+        torch.set_float32_matmul_precision(
+            os.environ.get("RIICHIENV_MATMUL_PRECISION", "high"))
         self.worker_id = worker_id
         self.device = torch.device(device)
         self.num_envs = num_envs
