@@ -42,6 +42,13 @@ CONFIG="${CONFIG:-$REPO_ROOT/riichienv-ml/src/riichienv_ml/configs/4p/ppo_v2.yml
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO_ROOT/artifacts/4p/ppo_v2/checkpoints}"
 WORKER_DEVICE="${WORKER_DEVICE:-cpu}"
 GPU_PER_WORKER="${GPU_PER_WORKER:-0.0}"
+# num_workers / num_envs_per_worker are overridable so a GPU-worker run can
+# trade throughput for GPU memory: each cuda worker keeps its own model +
+# frozen baseline model resident on the single shared GPU, so 20 workers can
+# exceed the 48 GiB card (OOM mid-step). Drop NUM_WORKERS for the transformer
+# (e.g. 12) to leave headroom for the learner's training-step allocations.
+NUM_WORKERS="${NUM_WORKERS:-20}"
+NUM_ENVS_PER_WORKER="${NUM_ENVS_PER_WORKER:-32}"
 # Optional override for the config's own num_steps (e.g. to fit a wall-clock
 # budget); empty means "use whatever the config specifies".
 NUM_STEPS="${NUM_STEPS:-}"
@@ -119,8 +126,8 @@ fi
 
 python riichienv-ml/scripts/train_ppo.py \
   -c "$CONFIG" \
-  --num_workers 20 \
-  --num_envs_per_worker 32 \
+  --num_workers "$NUM_WORKERS" \
+  --num_envs_per_worker "$NUM_ENVS_PER_WORKER" \
   --worker_device "$WORKER_DEVICE" \
   --gpu_per_worker "$GPU_PER_WORKER" \
   --checkpoint_dir "$CHECKPOINT_DIR" \
