@@ -98,13 +98,24 @@ def run_ppo_training(cfg):
     python_path = ":".join(sys.path)
     src_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
+    worker_env_vars = {
+        "PYTHONPATH": python_path,
+        "PATH": os.environ["PATH"],
+    }
+    # Ray actors don't reliably inherit the driver's arbitrary OS env when a
+    # runtime_env is specified, so explicitly forward the RIICHIENV_*/
+    # TORCHINDUCTOR_* toggles that PPOWorker.__init__ reads (e.g.
+    # RIICHIENV_DISABLE_WORKER_COMPILE, which gates the torch.compile that
+    # deadlocks GPU workers at scale). Without this the flags are dead code
+    # in the worker process.
+    for _k, _v in os.environ.items():
+        if _k.startswith(("RIICHIENV_", "TORCHINDUCTOR_", "TORCH_")):
+            worker_env_vars.setdefault(_k, _v)
+
     runtime_env = {
         "working_dir": src_dir,
         "excludes": [".git", ".venv", "wandb", "__pycache__", "pyproject.toml"],
-        "env_vars": {
-            "PYTHONPATH": python_path,
-            "PATH": os.environ["PATH"]
-        }
+        "env_vars": worker_env_vars,
     }
 
     ray.init(runtime_env=runtime_env, ignore_reinit_error=True)
