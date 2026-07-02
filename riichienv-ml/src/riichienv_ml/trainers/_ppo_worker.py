@@ -9,6 +9,7 @@ from riichienv import RiichiEnv
 
 from riichienv_ml.config import import_class, GAME_PARAMS
 from riichienv_ml.models.grp_model import RewardPredictor
+from riichienv_ml.trainers.kyoku_reward import compute_kyoku_gae, compute_kyoku_rewards
 
 
 @ray.remote
@@ -107,21 +108,9 @@ class PPOWorker:
 
     def _compute_kyoku_rewards(self, prev_scores, cur_scores,
                                round_wind, oya, honba, riichi_sticks) -> list[float]:
-        if self.reward_predictor is None:
-            return [0.0] * self.n_players
-
-        n = self.n_players
-        deltas = [cur_scores[i] - prev_scores[i] for i in range(n)]
-        grp_features = {}
-        for i in range(n):
-            grp_features[f"p{i}_init_score"] = prev_scores[i]
-            grp_features[f"p{i}_end_score"] = cur_scores[i]
-            grp_features[f"p{i}_delta_score"] = deltas[i]
-        grp_features["chang"] = round_wind
-        grp_features["ju"] = oya
-        grp_features["ben"] = honba
-        grp_features["liqibang"] = riichi_sticks
-        return self.reward_predictor.calc_all_player_rewards(grp_features)
+        return compute_kyoku_rewards(
+            self.reward_predictor, prev_scores, cur_scores,
+            round_wind, oya, honba, riichi_sticks, self.n_players)
 
     def collect_episodes(self):
         t_start = time.time()
@@ -307,24 +296,9 @@ class PPOWorker:
                 kyoku_lengths.append(T)
                 kyoku_rewards.append(kyoku_reward)
 
-                values = [step["value"] for step in traj]
-                value_predictions.extend(values)
-                advantages = [0.0] * T
-                returns = [0.0] * T
-
-                gae = 0.0
-                for t in reversed(range(T)):
-                    if t == T - 1:
-                        reward = kyoku_reward
-                        next_value = 0.0
-                    else:
-                        reward = 0.0
-                        next_value = values[t + 1]
-
-                    delta = reward + self.gamma * next_value - values[t]
-                    gae = delta + self.gamma * self.gae_lambda * gae
-                    advantages[t] = gae
-                    returns[t] = gae + values[t]
+                value_predictions.extend(step["value"] for step in traj)
+                advantages, returns = compute_kyoku_gae(
+                    traj, kyoku_reward, self.gamma, self.gae_lambda)
 
                 for t, step in enumerate(traj):
                     feat_list.append(step["features"])
