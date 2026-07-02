@@ -13,3 +13,9 @@ model.py
 mortal_agent_play.py
 build
 .python-version
+
+# Akagi bot bridge runtime artifacts (mirrors Akagi/.gitignore's
+# mjai_bot/*/{.akagi,uv.lock,settings.toml} exclusions)
+riichienv-ml/scripts/akagi_bot/.akagi/
+riichienv-ml/scripts/akagi_bot/uv.lock
+riichienv-ml/scripts/akagi_bot/settings.toml
