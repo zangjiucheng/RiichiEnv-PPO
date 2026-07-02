@@ -1,3 +1,4 @@
+import os
 import random
 import time
 from pathlib import Path
@@ -51,7 +52,20 @@ class PPOWorker:
         self.baseline_model = ModelClass(**mc).to(self.device)
         self.baseline_model.eval()
 
-        if self.device.type == "cuda":
+        # torch.compile on GPU workers can intermittently deadlock at scale:
+        # 20 fractional-GPU Ray actors each spawning their own Inductor
+        # compile-subprocess pool (sized to CPU count) and initializing CUDA
+        # on the shared GPU at the same instant hangs ~85% of runs (GPU pinned
+        # at 0% util, workers never allocate memory). Two guards:
+        #   - RIICHIENV_DISABLE_WORKER_COMPILE=1 skips compile entirely (eager
+        #     GPU inference -- slower per step but no compile-init deadlock).
+        #   - Otherwise force serial in-process compilation
+        #     (TORCHINDUCTOR_COMPILE_THREADS=1) so the workers don't each fork
+        #     a ~CPU-count subprocess pool that oversubscribes + contends.
+        _disable_compile = os.getenv(
+            "RIICHIENV_DISABLE_WORKER_COMPILE", "0").lower() in ("1", "true", "yes")
+        if self.device.type == "cuda" and not _disable_compile:
+            os.environ.setdefault("TORCHINDUCTOR_COMPILE_THREADS", "1")
             self.model = torch.compile(self.model)
             self.baseline_model = torch.compile(self.baseline_model)
 
