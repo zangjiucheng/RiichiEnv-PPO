@@ -45,13 +45,16 @@ ppo:
   eval_episodes: 192
   # NOTE: self-attention over ~600 tokens (25 sparse + 512 progression + 64
   # candidates + CLS) is far more expensive per sample than the ResNet CNN
-  # used by ppo.yml/ppo_v2.yml. Workers run this on CPU (worker_device: cpu)
-  # for policy inference during rollout collection; watch the worker's
-  # "trans/s" log line and switch to worker_device: cuda / gpu_per_worker > 0,
-  # or reduce num_workers / num_envs_per_worker, if collection becomes the
-  # bottleneck.
-  worker_device: cpu
-  gpu_per_worker: 0.0
+  # used by ppo.yml/ppo_v2.yml. worker_device: cpu (single-threaded eager
+  # inference, torch.compile only applies for device.type=="cuda" -- see
+  # PPOWorker.__init__) measured 90+ min for a single dry-run eval pass (32
+  # hanchan/worker) with no sign of finishing, i.e. would blow the 24h wall
+  # clock in a handful of steps. Moved inference onto the GPU instead: 20
+  # workers x gpu_per_worker=0.04 = 0.8 of Ray's logical GPU resource,
+  # leaving headroom below the node's 1.0 (the learner itself uses cuda
+  # directly outside Ray's accounting, sharing the same physical device).
+  worker_device: cuda
+  gpu_per_worker: 0.04
   num_envs_per_worker: 32
   checkpoint_dir: artifacts/4p/ppo_transformer_scratch/checkpoints
   wandb_entity: jiucheng-z-university-of-waterloo
