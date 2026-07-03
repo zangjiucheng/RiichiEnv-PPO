@@ -138,6 +138,9 @@ class OfflineTrainConfig(WandbConfig):
     model_class: str = "riichienv_ml.models.q_network.QNetwork"
     dataset_class: str = "riichienv_ml.datasets.mjai_logs.MCDataset"
     encoder_class: str = "riichienv_ml.features.feat_v1.ObservationEncoder"
+    # Extra kwargs forwarded to encoder_class beyond tile_dim (e.g. the
+    # transformer's SequenceFeaturePackedEncoder needs max_prog_len/max_cand_len).
+    encoder: dict = {}
     # Third-party evaluator
     evaluator: EvaluatorConfig = EvaluatorConfig()
 
@@ -145,6 +148,11 @@ class OfflineTrainConfig(WandbConfig):
 class BcConfig(OfflineTrainConfig):
     # Online teacher BC (vs offline logs BC)
     online: bool = False
+    # Offline-logs loss: "cql" = CQL on Q-values (QNetwork), "policy" =
+    # cross-entropy on masked actor logits + value MSE (actor-critic models
+    # like TransformerActorCritic). Lets offline human-log BC drive the
+    # transformer the same way bc_logs drives the QNetwork.
+    bc_mode: Literal["cql", "policy"] = "cql"
     # LR scheduler
     lr_min: float = 1e-5
     warmup_steps: int = 0               # linear warmup (in collection rounds, same unit as num_steps)

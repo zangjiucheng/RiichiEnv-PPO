@@ -1,0 +1,46 @@
+bc:
+  game:
+    n_players: 4
+  # Offline BC from real human (mjsoul) game logs -- NOT the online kanachan
+  # teacher (which needs the missing teacher model + riichienv-ml-xt plugin).
+  online: false
+  # Actor-critic policy BC: cross-entropy on masked policy logits toward the
+  # logged human action + value regression to the GRP return. (The default
+  # "cql" mode is for QNetwork; the transformer needs "policy".)
+  bc_mode: policy
+  grp_model: artifacts/4p/grp_model.pth
+  output: artifacts/4p/bc_model_seq.pth
+  data_glob: "data/mjsoul/mjsoul-4p/train/**/*.jsonl"
+  device: cuda
+  batch_size: 256
+  lr: 1e-4
+  lr_min: 1e-5
+  gamma: 1.0
+  pts_weight: [6.0, 4.0, 2.0, 0.0]
+  weight_decay: 0.1
+  value_coef: 0.5
+  num_epochs: 3
+  num_workers: 12
+  limit: 500000
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
+  wandb_tags: [bc, logs, transformer, policy]
+  # TransformerActorCritic + packed-sequence encoder. model dims MUST match
+  # ppo_transformer_scratch.yml / ppo_transformer.yml so PPO can warm-start
+  # from this BC checkpoint. encoder kwargs must match model.max_prog_len /
+  # max_cand_len or PACKED_SIZE mismatches what the transformer expects.
+  model_class: riichienv_ml.models.transformer.TransformerActorCritic
+  encoder_class: riichienv_ml.features.sequence_features.SequenceFeaturePackedEncoder
+  encoder:
+    max_prog_len: 512
+    max_cand_len: 64
+  model:
+    d_model: 256
+    nhead: 8
+    num_layers: 6
+    dim_feedforward: 1024
+    dropout: 0.1
+    num_actions: 82
+    d_sub: 32
+    max_prog_len: 512
+    max_cand_len: 64

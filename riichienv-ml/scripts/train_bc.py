@@ -140,10 +140,13 @@ def main():
         model_class=cfg.model_class,
         dataset_class=cfg.dataset_class,
         encoder_class=cfg.encoder_class,
+        encoder_config=cfg.encoder,
         n_players=game.n_players,
         replay_rule=game.replay_rule,
         tile_dim=game.tile_dim,
         evaluator_config=cfg.evaluator,
+        bc_mode=cfg.bc_mode,
+        value_coef=cfg.value_coef,
     )
     trainer.train(cfg.output)
 

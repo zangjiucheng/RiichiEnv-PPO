@@ -88,10 +88,13 @@ class Trainer:
         model_class: str = "riichienv_ml.models.q_network.QNetwork",
         dataset_class: str = "riichienv_ml.datasets.mjai_logs.MCDataset",
         encoder_class: str = "riichienv_ml.features.feat_v1.ObservationEncoder",
+        encoder_config: dict | None = None,
         n_players: int = 4,
         replay_rule: str = "mjsoul",
         tile_dim: int = 34,
         evaluator_config=None,
+        bc_mode: str = "cql",
+        value_coef: float = 0.5,
     ):
         self.grp_model_path = grp_model_path
         self.pts_weight = pts_weight
@@ -111,9 +114,12 @@ class Trainer:
         self.model_class = model_class
         self.dataset_class = dataset_class
         self.encoder_class = encoder_class
+        self.encoder_config = encoder_config or {}
         self.n_players = n_players
         self.replay_rule = replay_rule
         self.tile_dim = tile_dim
+        self.bc_mode = bc_mode
+        self.value_coef = value_coef
 
         if evaluator_config is None:
             from riichienv_ml.config import EvaluatorConfig
@@ -146,9 +152,10 @@ class Trainer:
             device=self.device_str,
         )
 
-        # Instantiate encoder
+        # Instantiate encoder (forward extra kwargs, e.g. the transformer's
+        # SequenceFeaturePackedEncoder needs max_prog_len/max_cand_len).
         EncoderClass = import_class(self.encoder_class)
-        encoder = EncoderClass(tile_dim=self.tile_dim)
+        encoder = EncoderClass(tile_dim=self.tile_dim, **self.encoder_config)
 
         # Dataset
         data_files = glob.glob(self.data_glob, recursive=True)
@@ -207,53 +214,79 @@ class Trainer:
 
                 optimizer.zero_grad()
 
-                if has_aux and ranks is not None:
-                    q_values, aux_logits = model.forward_with_aux(features)
-                else:
-                    out = model(features)
-                    if isinstance(out, tuple):
-                        q_values = out[0]
-                    else:
-                        q_values = out
-                    aux_logits = None
-
-                cql_term, q_data = cql_loss(q_values, actions, masks)
-
                 if targets.dim() > 1:
                     targets = targets.squeeze(-1)
-                mse_term = mse_criterion(q_data, targets)
 
-                aux_loss_val = 0.0
-                if aux_logits is not None and ranks is not None:
-                    aux_loss = F.cross_entropy(aux_logits, ranks)
-                    aux_loss_val = aux_loss.item()
+                if self.bc_mode == "policy":
+                    # Actor-critic offline BC: imitate the logged (human) action
+                    # with cross-entropy over masked policy logits, plus a value
+                    # regression toward the GRP return. `cql_meter` carries the
+                    # policy loss and `mse_meter` the value loss in this mode.
+                    out = model(features)
+                    logits, value = out if isinstance(out, tuple) else (out, None)
+                    logits = logits.masked_fill(masks == 0, -1e9)
+                    policy_loss = F.cross_entropy(logits, actions)
+                    if value is not None:
+                        value = value.squeeze(-1) if value.dim() > 1 else value
+                        value_loss = mse_criterion(value, targets)
+                    else:
+                        value_loss = torch.zeros((), device=self.device)
+                    loss = policy_loss + self.value_coef * value_loss
+                    primary_val, secondary_val, aux_loss_val = (
+                        policy_loss.item(), value_loss.item(), 0.0)
                 else:
-                    aux_loss = 0.0
+                    if has_aux and ranks is not None:
+                        q_values, aux_logits = model.forward_with_aux(features)
+                    else:
+                        out = model(features)
+                        q_values = out[0] if isinstance(out, tuple) else out
+                        aux_logits = None
 
-                loss = mse_term + self.alpha * cql_term + self.aux_weight * aux_loss
+                    cql_term, q_data = cql_loss(q_values, actions, masks)
+                    mse_term = mse_criterion(q_data, targets)
+
+                    aux_loss_val = 0.0
+                    if aux_logits is not None and ranks is not None:
+                        aux_loss = F.cross_entropy(aux_logits, ranks)
+                        aux_loss_val = aux_loss.item()
+                    else:
+                        aux_loss = 0.0
+
+                    loss = mse_term + self.alpha * cql_term + self.aux_weight * aux_loss
+                    primary_val, secondary_val = cql_term.item(), mse_term.item()
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
                 optimizer.step()
 
                 loss_meter.update(loss.item())
-                cql_meter.update(cql_term.item())
-                mse_meter.update(mse_term.item())
+                cql_meter.update(primary_val)     # policy_loss (policy) / cql_term (cql)
+                mse_meter.update(secondary_val)   # value_loss (policy) / mse_term (cql)
                 aux_meter.update(aux_loss_val)
 
                 if step % 100 == 0:
-                    log_msg = (f"Epoch {epoch}, Step {step}, Loss: {loss_meter.avg:.4f} "
-                               f"(MSE: {mse_meter.avg:.4f}, CQL: {cql_meter.avg:.4f}")
-                    log_dict = {
-                        "epoch": epoch,
-                        "loss": loss_meter.avg,
-                        "mse": mse_meter.avg,
-                        "cql": cql_meter.avg,
-                    }
-                    if has_aux:
-                        log_msg += f", AUX: {aux_meter.avg:.4f}"
-                        log_dict["aux"] = aux_meter.avg
-                    log_msg += ")"
+                    if self.bc_mode == "policy":
+                        log_msg = (f"Epoch {epoch}, Step {step}, Loss: {loss_meter.avg:.4f} "
+                                   f"(policy: {cql_meter.avg:.4f}, value: {mse_meter.avg:.4f})")
+                        log_dict = {
+                            "epoch": epoch,
+                            "loss": loss_meter.avg,
+                            "policy_loss": cql_meter.avg,
+                            "value_loss": mse_meter.avg,
+                        }
+                    else:
+                        log_msg = (f"Epoch {epoch}, Step {step}, Loss: {loss_meter.avg:.4f} "
+                                   f"(MSE: {mse_meter.avg:.4f}, CQL: {cql_meter.avg:.4f}")
+                        log_dict = {
+                            "epoch": epoch,
+                            "loss": loss_meter.avg,
+                            "mse": mse_meter.avg,
+                            "cql": cql_meter.avg,
+                        }
+                        if has_aux:
+                            log_msg += f", AUX: {aux_meter.avg:.4f}"
+                            log_dict["aux"] = aux_meter.avg
+                        log_msg += ")"
                     print(log_msg)
                     wandb.log(log_dict, step=step)
 
