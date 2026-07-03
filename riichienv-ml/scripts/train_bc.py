@@ -20,6 +20,11 @@ import torch
 if os.getenv("RIICHIENV_DISABLE_CUDNN", "1").lower() not in ("0", "false", "no"):
     torch.backends.cudnn.enabled = False
 
+# TF32 tensor cores for fp32 matmuls (~2x on Ampere/Ada, negligible accuracy
+# loss) -- the transformer BC forward/backward is matmul-bound. Overridable
+# via RIICHIENV_MATMUL_PRECISION ("highest" restores full fp32).
+torch.set_float32_matmul_precision(os.getenv("RIICHIENV_MATMUL_PRECISION", "high"))
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -147,6 +152,7 @@ def main():
         evaluator_config=cfg.evaluator,
         bc_mode=cfg.bc_mode,
         value_coef=cfg.value_coef,
+        save_every=cfg.save_every,
     )
     trainer.train(cfg.output)
 

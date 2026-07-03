@@ -95,6 +95,7 @@ class Trainer:
         evaluator_config=None,
         bc_mode: str = "cql",
         value_coef: float = 0.5,
+        save_every: int = 0,
     ):
         self.grp_model_path = grp_model_path
         self.pts_weight = pts_weight
@@ -120,6 +121,7 @@ class Trainer:
         self.tile_dim = tile_dim
         self.bc_mode = bc_mode
         self.value_coef = value_coef
+        self.save_every = save_every
 
         if evaluator_config is None:
             from riichienv_ml.config import EvaluatorConfig
@@ -309,6 +311,13 @@ class Trainer:
                         wandb.log(metrics, step=step)
                     except Exception as e:
                         logger.error(f"Mortal evaluation failed at step {step}: {e}")
+
+                # Periodic checkpoint so a long run (one epoch over 168k logs
+                # is huge) always has a recent snapshot to pull/resume, not just
+                # the per-epoch/limit save.
+                if self.save_every > 0 and step > 0 and step % self.save_every == 0:
+                    torch.save(model.state_dict(), output_path)
+                    logger.info(f"Step {step}: saved checkpoint to {output_path}")
 
                 step += 1
                 scheduler.step()

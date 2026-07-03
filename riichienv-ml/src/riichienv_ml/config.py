@@ -134,6 +134,7 @@ class OfflineTrainConfig(WandbConfig):
     weight_decay: float = 0.0
     aux_weight: float = 0.0
     value_coef: float = 0.0
+    save_every: int = 0  # periodic checkpoint every N steps (0 = per-epoch/limit only)
     model: ModelConfig = ModelConfig()
     model_class: str = "riichienv_ml.models.q_network.QNetwork"
     dataset_class: str = "riichienv_ml.datasets.mjai_logs.MCDataset"

@@ -20,8 +20,9 @@ bc:
   weight_decay: 0.1
   value_coef: 0.5
   num_epochs: 3
-  num_workers: 12
+  num_workers: 20
   limit: 500000
+  save_every: 5000
   wandb_entity: jiucheng-z-university-of-waterloo
   wandb_project: riichippo
   wandb_tags: [bc, logs, transformer, policy]
