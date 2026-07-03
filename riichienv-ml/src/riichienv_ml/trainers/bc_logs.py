@@ -96,6 +96,7 @@ class Trainer:
         bc_mode: str = "cql",
         value_coef: float = 0.5,
         save_every: int = 0,
+        max_grad_norm: float = 10.0,
     ):
         self.grp_model_path = grp_model_path
         self.pts_weight = pts_weight
@@ -122,6 +123,7 @@ class Trainer:
         self.bc_mode = bc_mode
         self.value_coef = value_coef
         self.save_every = save_every
+        self.max_grad_norm = max_grad_norm
 
         if evaluator_config is None:
             from riichienv_ml.config import EvaluatorConfig
@@ -199,6 +201,7 @@ class Trainer:
         cql_meter = AverageMeter(name="cql")
         mse_meter = AverageMeter(name="mse")
         aux_meter = AverageMeter(name="aux")
+        nan_skips = 0
 
         for epoch in range(self.num_epochs):
             for i, batch in enumerate(dataloader):
@@ -257,8 +260,27 @@ class Trainer:
                     loss = mse_term + self.alpha * cql_term + self.aux_weight * aux_loss
                     primary_val, secondary_val = cql_term.item(), mse_term.item()
 
+                # NaN/inf guard: a single rare outlier batch spiking the
+                # gradient past the clip corrupts the weights to NaN and every
+                # subsequent step stays NaN. Never let a non-finite loss touch
+                # the weights -- skip the step instead (grads already zeroed
+                # above; no backward run). This is what lets an unattended
+                # multi-hour run survive the tail of a 160k-game dataset.
+                if not torch.isfinite(loss):
+                    nan_skips += 1
+                    if nan_skips <= 10 or nan_skips % 100 == 0:
+                        logger.warning(
+                            f"Step {step}: non-finite loss "
+                            f"(primary={primary_val}, secondary={secondary_val}) "
+                            f"-- skipped ({nan_skips} total)")
+                    step += 1
+                    scheduler.step()
+                    if step >= self.limit:
+                        break
+                    continue
+
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self.max_grad_norm)
                 optimizer.step()
 
                 loss_meter.update(loss.item())
@@ -289,6 +311,9 @@ class Trainer:
                             log_msg += f", AUX: {aux_meter.avg:.4f}"
                             log_dict["aux"] = aux_meter.avg
                         log_msg += ")"
+                    if nan_skips:
+                        log_msg += f" [nan_skips={nan_skips}]"
+                        log_dict["nan_skips"] = nan_skips
                     print(log_msg)
                     wandb.log(log_dict, step=step)
 

@@ -19,6 +19,10 @@ bc:
   pts_weight: [6.0, 4.0, 2.0, 0.0]
   weight_decay: 0.1
   value_coef: 0.5
+  # Tight gradient clip + the trainer's NaN-skip guard: a rare outlier batch in
+  # the 160k-game tail was spiking the gradient past the old loose clip (10.0)
+  # and corrupting the weights to NaN (the first run went NaN before step 29k).
+  max_grad_norm: 1.0
   num_epochs: 3
   num_workers: 20
   limit: 500000

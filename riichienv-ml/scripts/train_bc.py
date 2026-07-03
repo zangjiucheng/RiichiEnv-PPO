@@ -153,6 +153,7 @@ def main():
         bc_mode=cfg.bc_mode,
         value_coef=cfg.value_coef,
         save_every=cfg.save_every,
+        max_grad_norm=cfg.max_grad_norm,
     )
     trainer.train(cfg.output)
 
