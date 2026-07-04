@@ -14,9 +14,14 @@ ppo:
   encoder:
     max_prog_len: 512
     max_cand_len: 64
-  num_workers: 16
+  # GPU-worker + memory-safe settings proven on this node (single 48 GiB
+  # RTX6000): 8 cuda workers (each keeps model+baseline resident) + batch 256
+  # for the learner update fit with headroom; 20 workers / batch 512 OOM.
+  # The j7zang sbatch STILL overrides worker_device via WORKER_DEVICE (default
+  # cpu), so submit with WORKER_DEVICE=cuda GPU_PER_WORKER=0.04 NUM_WORKERS=8.
+  num_workers: 8
   num_steps: 500
-  batch_size: 512
+  batch_size: 256
   lr: 1e-5
   gamma: 1.0
   max_grad_norm: 0.5
@@ -41,8 +46,8 @@ ppo:
   # "trans/s" log line and switch to worker_device: cuda / gpu_per_worker > 0,
   # or reduce num_workers / num_envs_per_worker, if collection becomes the
   # bottleneck.
-  worker_device: cpu
-  gpu_per_worker: 0.0
+  worker_device: cuda
+  gpu_per_worker: 0.04
   num_envs_per_worker: 32
   checkpoint_dir: artifacts/4p/ppo_transformer/checkpoints
   wandb_entity: jiucheng-z-university-of-waterloo
