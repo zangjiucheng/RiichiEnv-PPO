@@ -1,0 +1,62 @@
+ppo:
+  game:
+    n_players: 4
+  algorithm: ppo
+  # Gentle warm-start PPO on top of the human-log BC transformer, which ALREADY
+  # beats the CNN head-to-head (rank 2.21). The default ppo_transformer.yml
+  # DEGRADED it (rank 2.21 -> 2.82) -- diagnosed as too-aggressive updates
+  # (ppo_clip 0.02 caused clip_frac 0.7 / ratio_max ~30, approx_kl 2x the clip)
+  # drifting off the BC policy toward a reward proxy that doesn't track real
+  # placement. This config barely nudges the BC policy instead:
+  #   lr 1e-5 -> 1e-6, ppo_clip 0.02 -> 0.1 (standard), alpha_kl 0.1 -> 0.5 with
+  #   near-zero warmup (hard KL leash to BC from the start), ppo_epochs 2 -> 1.
+  # Watch eval-vs-BC-baseline: rank must go BELOW 2.5 (improving on BC); if it
+  # climbs above 2.5 like the aggressive run, PPO is hurting again -- stop.
+  load_model: artifacts/4p/bc_model_seq.pth
+  device: cuda
+  model_class: riichienv_ml.models.transformer.TransformerActorCritic
+  encoder_class: riichienv_ml.features.sequence_features.SequenceFeaturePackedEncoder
+  encoder:
+    max_prog_len: 512
+    max_cand_len: 64
+  num_workers: 8
+  num_steps: 500
+  batch_size: 256
+  lr: 1e-6
+  gamma: 1.0
+  max_grad_norm: 0.5
+  ppo_clip: 0.1
+  ppo_epochs: 1
+  gae_lambda: 0.95
+  entropy_coef: 0.001
+  value_coef: 0.5
+  grp_model: artifacts/4p/grp_model.pth
+  pts_weight: [6.0, 4.0, 2.0, 0.0]
+  weight_decay: 0.1
+  alpha_kl: 0.5
+  alpha_kl_warmup_steps: 5
+  aux_weight: 0.0
+  async_rollout: true
+  eval_interval: 25
+  eval_episodes: 192
+  worker_device: cuda
+  gpu_per_worker: 0.04
+  num_envs_per_worker: 32
+  checkpoint_dir: artifacts/4p/ppo_transformer_gentle/checkpoints
+  wandb_entity: jiucheng-z-university-of-waterloo
+  wandb_project: riichippo
+  evaluator:
+    model_path: artifacts/teacher/best_model.pth
+    eval_episodes: 48
+    eval_device: cuda
+  wandb_tags: [ppo, transformer, gentle, warmstart]
+  model:
+    d_model: 256
+    nhead: 8
+    num_layers: 6
+    dim_feedforward: 1024
+    dropout: 0.1
+    num_actions: 82
+    d_sub: 32
+    max_prog_len: 512
+    max_cand_len: 64
