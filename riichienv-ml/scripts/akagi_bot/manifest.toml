@@ -16,14 +16,14 @@ help    = "Absolute path to the RiichiEnv-PPO checkout. Leave blank when this bo
 [settings.config_path_4p]
 type    = "string"
 label   = "4P config YAML"
-default = "riichienv-ml/src/riichienv_ml/configs/4p/ppo_v2.yml"
-help    = "Path to the training YAML (defines model_class/encoder_class/model dims). Relative to the RiichiEnv-PPO repo root, or absolute."
+default = "riichienv-ml/src/riichienv_ml/configs/4p/ppo_transformer.yml"
+help    = "Path to the training YAML (defines model_class/encoder_class/model dims). Relative to the RiichiEnv-PPO repo root, or absolute. Default is the BC-trained transformer (bc_model_seq.pth), which beats the CNN head-to-head (rank 2.21 vs 2.5)."
 
 [settings.model_path_4p]
 type    = "string"
 label   = "4P checkpoint (.pth or dir)"
-default = "artifacts/4p/ppo_v2/checkpoints"
-help    = "A directory auto-picks the highest-numbered model_*.pth in it."
+default = "artifacts/4p/bc_model_seq.pth"
+help    = "A directory auto-picks the highest-numbered model_*.pth in it. Default is the human-log BC transformer, the strongest 4p model."
 
 [settings.config_path_3p]
 type    = "string"
